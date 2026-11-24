@@ -1,0 +1,52 @@
+{
+ "note": "Credits for the photographs in this folder: photos.mjs credits prints the footer block for the ones the pages use.",
+ "photos": [
+  {
+   "file": "photo-f170390775.webp",
+   "files": [
+    "photo-f170390775-500.webp",
+    "photo-f170390775-960.webp",
+    "photo-f170390775-1280.webp",
+    "photo-f170390775.webp",
+    "photo-f170390775-780x975.webp"
+   ],
+   "id": "f170390775",
+   "alt": "Paranal generators (paranal-generator-set)",
+   "by": "ESO",
+   "licence": "CC BY 4.0",
+   "licenceUrl": "https://creativecommons.org/licenses/by/4.0",
+   "page": "https://commons.wikimedia.org/wiki/File:Paranal_generators_(paranal-generator-set).jpg",
+   "source": "Wikimedia Commons"
+  },
+  {
+   "file": "photo-f80268893.webp",
+   "files": [
+    "photo-f80268893-500.webp",
+    "photo-f80268893-960.webp",
+    "photo-f80268893.webp"
+   ],
+   "id": "f80268893",
+   "alt": "Blue Grass Chemical Agent-Destruction Pilot Plant Standby Diesel Generator (12119019006)",
+   "by": "PEO ACWA",
+   "licence": "CC BY 2.0",
+   "licenceUrl": "https://creativecommons.org/licenses/by/2.0",
+   "page": "https://commons.wikimedia.org/wiki/File:Blue_Grass_Chemical_Agent-Destruction_Pilot_Plant_Standby_Diesel_Generator_(12119019006).jpg",
+   "source": "Wikimedia Commons"
+  },
+  {
+   "file": "photo-f29154961.webp",
+   "files": [
+    "photo-f29154961-500.webp",
+    "photo-f29154961-960.webp",
+    "photo-f29154961.webp"
+   ],
+   "id": "f29154961",
+   "alt": "Generator Transfer Switch Front",
+   "by": "Robert.Harker",
+   "licence": "CC BY-SA 3.0",
+   "licenceUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+   "page": "https://commons.wikimedia.org/wiki/File:Generator_Transfer_Switch_Front.jpg",
+   "source": "Wikimedia Commons"
+  }
+ ]
+}

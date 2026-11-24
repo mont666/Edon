@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /404-page/
+
+User-agent: AdsBot-Google
+Allow: /
+
+User-agent: AdsBot-Google-Mobile
+Allow: /

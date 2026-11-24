@@ -20,6 +20,17 @@ Claude Code session opened in this repo. Script paths inside skills are relative
    `geo-crawlers`, `geo-schema`, `geo-technical`, `geo-content`, `geo-platform-optimizer`,
    `geo-brand-mentions`, `geo-report`).
 
+## The Резерв 400 site (site/)
+
+- Data lives in `data/products.json` and `data/site.json`; `node tools/build.mjs` fills the
+  `<!-- build:NAME -->` regions of `site/index.html` and regenerates every other page. Never hand-edit
+  generated pages (`site/generatory/`, buyer pages, sitemap, feed); edit the data or `tools/build.mjs`.
+- `site/index.html` outside the build regions is hand-written (taste-skill kit: `site/assets/system.css`
+  etc.); page CSS goes in `site/assets/site.css`, page JS in `site/assets/site.js`.
+- Google Ads rules for this site: no unverifiable claims (cheapest, counters, fake reviews), prices and
+  stock must match the data, the seller identity comes from `site.json`, we are a dealer not the maker.
+- Design checks were run with the taste-skill (`site/.taste-skill/waivers.json` holds the 5 waivers).
+
 ## Notes
 
 - `design-taste-frontend` registers a Stop hook that runs its `scripts/gate.mjs` (Node 22+).

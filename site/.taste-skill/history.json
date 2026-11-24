@@ -1,0 +1,20 @@
+{
+ "palettes": [
+  "stone-blueprint"
+ ],
+ "types": [
+  "geist"
+ ],
+ "dealt": [
+  "fraunces",
+  "hanken",
+  "bricolage"
+ ],
+ "moments": [
+  {
+   "id": "picture-develops",
+   "at": "2026-11-24T07:52:17.513Z",
+   "seed": "7c5c71fc"
+  }
+ ]
+}
