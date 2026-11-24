@@ -154,22 +154,33 @@ const footerHtml = pre => `<footer class="site-footer">
 </nav>`;
 
 // ---------------------------------------------------------------- contact + order section (every page)
-const orderForm = selected => {
+// The form posts to FormSubmit (data/site.json formEndpoint: its AJAX URL). app.js sends JSON there; without
+// JavaScript the browser posts the form to FormSubmit's plain URL, which shows its own check and thank-you
+// pages (or the site's /dyakuiemo/ page once a domain is set). Field names are what the email shows.
+const formSubmit = /formsubmit\.co/.test(cfg.formEndpoint || '');
+const orderForm = (selected, pagePath = '') => {
   const endpoint = cfg.formEndpoint || '';
+  const action = endpoint.replace('/ajax/', '/');
   const opts = byPower.map(p => `<option value="${p.sku}"${p.slug === selected ? ' selected' : ''}>${esc(p.name)} — ${price(p.price)}</option>`).join('');
-  return `<form class="form" data-order-form data-endpoint="${esc(endpoint)}" data-mail="${esc(cfg.fallbackEmail || cfg.email || '')}" ${endpoint ? `action="${esc(endpoint)}" method="post"` : ''} novalidate>
-        <div class="field"><label for="f-name">Ім’я</label><input id="f-name" name="name" type="text" autocomplete="name" required aria-describedby="f-name-err"><p class="field__err" id="f-name-err" hidden>Напишіть, як до вас звертатися.</p></div>
-        <div class="field"><label for="f-phone">Телефон</label><input id="f-phone" name="phone" type="tel" autocomplete="tel" inputmode="tel" required minlength="10" aria-describedby="f-phone-err"><p class="field__err" id="f-phone-err" hidden>Номер з кодом оператора, наприклад 0XX XXX XX XX.</p></div>
-        <div class="field field--full"><label for="f-model">Модель</label><select id="f-model" name="model"><option value="">Ще не знаю — допоможіть підібрати</option>${opts}</select></div>
-        <div class="field"><label for="f-city">Населений пункт</label><input id="f-city" name="city" type="text" autocomplete="address-level2"></div>
-        <div class="field"><label for="f-pay">Оплата</label><select id="f-pay" name="payment"><option>Ще не знаю</option><option>З ПДВ</option><option>Без ПДВ</option><option>Готівкою при запуску</option></select></div>
-        <div class="field field--full"><label for="f-note">Що буде живити генератор</label><textarea id="f-note" name="note" rows="3"></textarea></div>
+  const hidden = formSubmit ? `
+        <input type="hidden" name="_subject" value="Заявка на генератор з сайту ${esc(cfg.name)}">
+        <input type="hidden" name="_template" value="table">
+        <input type="hidden" name="_url" value="${domain ? `${domain}/${pagePath}` : ''}">
+        ${domain ? `<input type="hidden" name="_next" value="${domain}/dyakuiemo/">` : ''}
+        <div data-hp hidden><label for="f-hp">Не заповнюйте це поле</label><input id="f-hp" type="text" name="_honey" tabindex="-1" autocomplete="off"></div>` : '';
+  return `<form class="form" data-order-form data-endpoint="${esc(endpoint)}" data-mail="${esc(cfg.fallbackEmail || cfg.email || '')}" ${endpoint ? `action="${esc(action)}" method="post"` : ''} novalidate>${hidden}
+        <div class="field"><label for="f-name">Ім’я</label><input id="f-name" name="Ім’я" type="text" autocomplete="name" required aria-describedby="f-name-err"><p class="field__err" id="f-name-err" hidden>Напишіть, як до вас звертатися.</p></div>
+        <div class="field"><label for="f-phone">Телефон</label><input id="f-phone" name="Телефон" type="tel" autocomplete="tel" inputmode="tel" required minlength="10" aria-describedby="f-phone-err"><p class="field__err" id="f-phone-err" hidden>Номер з кодом оператора, наприклад 0XX XXX XX XX.</p></div>
+        <div class="field field--full"><label for="f-model">Модель</label><select id="f-model" name="Модель"><option value="">Ще не знаю — допоможіть підібрати</option>${opts}</select></div>
+        <div class="field"><label for="f-city">Населений пункт</label><input id="f-city" name="Населений пункт" type="text" autocomplete="address-level2"></div>
+        <div class="field"><label for="f-pay">Оплата</label><select id="f-pay" name="Оплата"><option>Ще не знаю</option><option>З ПДВ</option><option>Без ПДВ</option><option>Готівкою при запуску</option></select></div>
+        <div class="field field--full"><label for="f-note">Що буде живити генератор</label><textarea id="f-note" name="Що живити" rows="3"></textarea></div>
         <div class="btn-row"><button class="btn btn--amber" type="submit">Замовити генератор</button></div>
         <p class="form__status" role="status" aria-live="polite"></p>
         <p class="form__note">Надсилаючи заявку, ви погоджуєтесь з <a href="{{pre}}konfidentsiinist/">політикою конфіденційності</a>. Платите лише після розрахунку й погодження.</p>
       </form>`;
 };
-const contactSection = (pre, selected = '') => `<section class="section dark" id="zamovlennia" aria-labelledby="zam-h">
+const contactSection = (pre, selected = '', pagePath = '') => `<section class="section dark" id="zamovlennia" aria-labelledby="zam-h">
   <div class="wrap contact">
     <div style="display:grid;gap:24px">
       <p class="label">Замовлення й консультація</p>
@@ -185,7 +196,7 @@ const contactSection = (pre, selected = '') => `<section class="section dark" id
     </div>
     <div class="form-card">
       <p class="label" style="margin-bottom:20px">Заявка на генератор</p>
-      ${orderForm(selected).replaceAll('{{pre}}', pre)}
+      ${orderForm(selected, pagePath).replaceAll('{{pre}}', pre)}
     </div>
   </div>
 </section>`;
@@ -253,7 +264,7 @@ const writePage = ({ path, title, description, main, ld, ogImage, robots = 'inde
 ${headerHtml(pre, onIndex)}
 <main id="main">
 ${main.replaceAll('{{pre}}', pre)}
-${contact ? contactSection(pre, selected) : ''}
+${contact ? contactSection(pre, selected, path ? `${path}/` : '') : ''}
 </main>
 ${footerHtml(pre)}
 <script type="application/json" id="models-data">${JSON.stringify(byPower.map(p => ({ sku: p.sku, kw: p.kw, body: p.body, name: p.name, price: p.price, stockText: stockText(p), ats: p.ats, alt: p.alt, img2x: `${pre}assets/img/products/${p.image}-2x.webp`, url: `${pre}generatory/${p.slug}/` })))}</script>
@@ -608,7 +619,7 @@ prosePage('konfidentsiinist', 'Політика конфіденційності
           <li>Щоб вимірювати ефективність реклами та покращувати сайт (знеособлена статистика).</li>
         </ul>
         <h2>Кому ми передаємо дані</h2>
-        <p>Ми не продаємо персональні дані. Дані з форми надходять до нас через сервіс обробки форм або електронну пошту, статистика відвідувань — до Google (Google Analytics, Google Ads), якщо ці сервіси ввімкнені. Перевізнику ми передаємо лише ім’я, телефон і адресу доставки.</p>
+        <p>Ми не продаємо персональні дані. ${formSubmit ? 'Заявки з форми надходять нам на електронну пошту через сервіс FormSubmit (formsubmit.co), який зберігає їх до 30 днів.' : 'Заявки з форми надходять нам на електронну пошту.'} Статистика відвідувань передається до Google (Google Analytics, Google Ads), якщо ці сервіси ввімкнені. Перевізнику ми передаємо лише ім’я, телефон і адресу доставки.</p>
         <h2>Скільки зберігаємо</h2>
         <p>Дані заявок зберігаємо до 3 років після останнього контакту або довше, якщо цього вимагає законодавство (бухгалтерські та гарантійні документи).</p>
         <h2>Ваші права</h2>
@@ -628,6 +639,10 @@ prosePage('credits', 'Джерела фотографій', 'Джерела фо
           <li>«Blue Grass Chemical Agent-Destruction Pilot Plant Standby Diesel Generator», PEO ACWA, <a href="https://creativecommons.org/licenses/by/2.0/">CC BY 2.0</a>, кадровано, <a href="https://commons.wikimedia.org/wiki/File:Blue_Grass_Chemical_Agent-Destruction_Pilot_Plant_Standby_Diesel_Generator_(12119019006).jpg">джерело</a>.</li>
         </ul>
         <p>Іконки Viber, Telegram і WhatsApp — Simple Icons (CC0); назви й знаки належать їх власникам.</p>`);
+
+// thank-you page: where FormSubmit sends a visitor whose browser posted the form without JavaScript (_next)
+writePage({ path: 'dyakuiemo', contact: false, robots: 'noindex, follow', title: `Заявку прийнято | ${cfg.name}`, description: 'Дякуємо за заявку на генератор EDON. Менеджер передзвонить на вказаний номер.',
+  main: `<section class="pp"><div class="wrap prose" style="padding-block:64px"><p class="label">Заявка на генератор</p><h1>Дякуємо, заявку прийнято</h1><p>Менеджер передзвонить на вказаний номер${cfg.hours ? ` (${esc(cfg.hours)})` : ''} і порахує потужність під ваш об’єкт.</p>${cfg.phone ? `<p style="margin-top:24px">Терміново? Зателефонуйте на <a href="${telHref}">${esc(phoneShown)}</a> або напишіть на цей номер:</p><div style="margin-top:12px">${messengers()}</div>` : ''}<p style="margin-top:32px"><a class="btn btn--amber" href="{{pre}}#modeli">Повернутися до каталогу</a></p></div></section>` });
 
 // 404
 writePage({ path: '404-page', contact: false, robots: 'noindex, follow', title: `Сторінку не знайдено | ${cfg.name}`, description: 'Такої сторінки немає. Перейдіть до каталогу генераторів EDON.',

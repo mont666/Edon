@@ -113,13 +113,18 @@
     </div>
     <div class="form-card">
       <p class="label" style="margin-bottom:20px">Заявка на генератор</p>
-      <form class="form" data-order-form data-endpoint="" data-mail="kosa.shop2023@gmail.com"  novalidate>
-        <div class="field"><label for="f-name">Ім’я</label><input id="f-name" name="name" type="text" autocomplete="name" required aria-describedby="f-name-err"><p class="field__err" id="f-name-err" hidden>Напишіть, як до вас звертатися.</p></div>
-        <div class="field"><label for="f-phone">Телефон</label><input id="f-phone" name="phone" type="tel" autocomplete="tel" inputmode="tel" required minlength="10" aria-describedby="f-phone-err"><p class="field__err" id="f-phone-err" hidden>Номер з кодом оператора, наприклад 0XX XXX XX XX.</p></div>
-        <div class="field field--full"><label for="f-model">Модель</label><select id="f-model" name="model"><option value="">Ще не знаю — допоможіть підібрати</option><option value="GJ-30GF">EDON GJ-30GF, 30 кВт — 320 000 ₴</option><option value="EDON-50KW">EDON 50 кВт, відкрита рама — 450 000 ₴</option><option value="EDON-50KW-K">EDON 50 кВт у кожусі — 575 000 ₴</option><option value="EDON-100KW" selected>EDON 100 кВт, відкрита рама — 699 000 ₴</option><option value="EDON-100KW-K">EDON 100 кВт у кожусі — 929 000 ₴</option><option value="EDON-150KW">EDON 150 кВт, відкрита рама — 949 000 ₴</option><option value="EDON-200KW">EDON 200 кВт, відкрита рама — 1 239 000 ₴</option></select></div>
-        <div class="field"><label for="f-city">Населений пункт</label><input id="f-city" name="city" type="text" autocomplete="address-level2"></div>
-        <div class="field"><label for="f-pay">Оплата</label><select id="f-pay" name="payment"><option>Ще не знаю</option><option>З ПДВ</option><option>Без ПДВ</option><option>Готівкою при запуску</option></select></div>
-        <div class="field field--full"><label for="f-note">Що буде живити генератор</label><textarea id="f-note" name="note" rows="3"></textarea></div>
+      <form class="form" data-order-form data-endpoint="https://formsubmit.co/ajax/kosa.shop2023@gmail.com" data-mail="kosa.shop2023@gmail.com" action="https://formsubmit.co/kosa.shop2023@gmail.com" method="post" novalidate>
+        <input type="hidden" name="_subject" value="Заявка на генератор з сайту Резерв 400">
+        <input type="hidden" name="_template" value="table">
+        <input type="hidden" name="_url" value="">
+        
+        <div data-hp hidden><label for="f-hp">Не заповнюйте це поле</label><input id="f-hp" type="text" name="_honey" tabindex="-1" autocomplete="off"></div>
+        <div class="field"><label for="f-name">Ім’я</label><input id="f-name" name="Ім’я" type="text" autocomplete="name" required aria-describedby="f-name-err"><p class="field__err" id="f-name-err" hidden>Напишіть, як до вас звертатися.</p></div>
+        <div class="field"><label for="f-phone">Телефон</label><input id="f-phone" name="Телефон" type="tel" autocomplete="tel" inputmode="tel" required minlength="10" aria-describedby="f-phone-err"><p class="field__err" id="f-phone-err" hidden>Номер з кодом оператора, наприклад 0XX XXX XX XX.</p></div>
+        <div class="field field--full"><label for="f-model">Модель</label><select id="f-model" name="Модель"><option value="">Ще не знаю — допоможіть підібрати</option><option value="GJ-30GF">EDON GJ-30GF, 30 кВт — 320 000 ₴</option><option value="EDON-50KW">EDON 50 кВт, відкрита рама — 450 000 ₴</option><option value="EDON-50KW-K">EDON 50 кВт у кожусі — 575 000 ₴</option><option value="EDON-100KW" selected>EDON 100 кВт, відкрита рама — 699 000 ₴</option><option value="EDON-100KW-K">EDON 100 кВт у кожусі — 929 000 ₴</option><option value="EDON-150KW">EDON 150 кВт, відкрита рама — 949 000 ₴</option><option value="EDON-200KW">EDON 200 кВт, відкрита рама — 1 239 000 ₴</option></select></div>
+        <div class="field"><label for="f-city">Населений пункт</label><input id="f-city" name="Населений пункт" type="text" autocomplete="address-level2"></div>
+        <div class="field"><label for="f-pay">Оплата</label><select id="f-pay" name="Оплата"><option>Ще не знаю</option><option>З ПДВ</option><option>Без ПДВ</option><option>Готівкою при запуску</option></select></div>
+        <div class="field field--full"><label for="f-note">Що буде живити генератор</label><textarea id="f-note" name="Що живити" rows="3"></textarea></div>
         <div class="btn-row"><button class="btn btn--amber" type="submit">Замовити генератор</button></div>
         <p class="form__status" role="status" aria-live="polite"></p>
         <p class="form__note">Надсилаючи заявку, ви погоджуєтесь з <a href="../../konfidentsiinist/">політикою конфіденційності</a>. Платите лише після розрахунку й погодження.</p>

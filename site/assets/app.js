@@ -89,10 +89,25 @@ if (calc && data.length) {
 }
 
 // ---------------------------------------------------------------- order form
+// Sends the request as JSON to the form service in data-endpoint (FormSubmit's AJAX URL), which mails it to the
+// shop. FormSubmit answers HTTP 200 with {"success": "true" | "false", "message": "..."}. Until the owner clicks
+// "Activate Form" in its first email it answers "false" with a message about activation and keeps the request
+// (up to 30 days), so the visitor is told it was received.
+const SENT = 'Заявку прийнято. Менеджер передзвонить на вказаний номер.';
 $$('form[data-order-form]').forEach(form => {
   const status = $('.form__status', form);
-  const fields = $$('input, select, textarea', form).filter(el => el.type !== 'hidden');
+  const fields = $$('input, select, textarea', form).filter(el => el.type !== 'hidden' && !el.closest('[data-hp]'));
   const say = t => { status.textContent = t; };
+  // what the email shows: every named field, a select as its option's words (not the SKU)
+  const payload = () => {
+    const out = {};
+    $$('input[name], select[name], textarea[name]', form).forEach(el => { out[el.name] = (el.matches('select') ? (el.selectedOptions[0]?.text || '') : el.value.trim()).replace(/\u00a0/g, ' '); });
+    const model = $('#f-model', form), name = $('#f-name', form), phone = $('#f-phone', form);
+    const what = model && model.value ? model.selectedOptions[0].text.replace(/\u00a0/g, ' ').split(' — ')[0] : 'потрібен підбір';
+    if ('_subject' in out) out._subject = `Заявка: ${what} — ${name?.value.trim() || ''}, ${phone?.value.trim() || ''}`;
+    if ('_url' in out) out._url = location.href.split('#')[0];
+    return out;
+  };
   const check = el => {
     if (el.type === 'tel') el.setCustomValidity(el.value.trim() && el.value.replace(/\D/g, '').length < 10 ? 'short' : '');
     const ok = el.checkValidity();
@@ -106,24 +121,30 @@ $$('form[data-order-form]').forEach(form => {
     e.preventDefault();
     const bad = fields.filter(el => !check(el));
     if (bad.length) { say(bad.length === 1 ? 'Виправте 1 поле.' : `Виправте поля: ${bad.length}.`); bad[0].focus(); return; }
-    const fd = new FormData(form);
+    const data = payload();
+    if (data._honey) { form.reset(); say(SENT); return; }   // the hidden trap field is filled only by bots
     const endpoint = (form.dataset.endpoint || '').trim();
     if (!endpoint) {
-      // no form service yet: open the visitor's mail app with the request written out
-      const body = [`Ім’я: ${fd.get('name')}`, `Телефон: ${fd.get('phone')}`, `Модель: ${form.querySelector('#f-model')?.selectedOptions[0]?.text || ''}`, `Населений пункт: ${fd.get('city') || ''}`, `Що живити: ${fd.get('note') || ''}`].join('\n');
-      location.href = `mailto:${form.dataset.mail}?subject=${encodeURIComponent('Заявка на генератор з сайту')}&body=${encodeURIComponent(body)}`;
+      // no form service: open the visitor's mail app with the request written out
+      const body = Object.entries(data).filter(([k]) => !k.startsWith('_')).map(([k, v]) => `${k}: ${v}`).join('\n');
+      location.href = `mailto:${form.dataset.mail}?subject=${encodeURIComponent(data._subject || 'Заявка на генератор з сайту')}&body=${encodeURIComponent(body)}`;
       say('Відкриваємо вашу пошту з готовим листом. Якщо вона не відкрилась — напишіть нам у Viber чи Telegram або зателефонуйте.');
       return;
     }
     const btn = $('button[type="submit"]', form);
     btn.disabled = true; say('Надсилаємо…');
     try {
-      const r = await fetch(endpoint, { method: 'POST', body: fd, headers: { Accept: 'application/json' } });
-      if (!r.ok) throw new Error(r.status);
-      form.reset(); say('Заявку прийнято. Менеджер передзвонить на вказаний номер.');
+      const r = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(data) });
+      const res = await r.json().catch(() => ({}));
+      const sent = r.ok && String(res.success) === 'true';
+      const pending = r.ok && !sent && /activ/i.test(res.message || '');
+      if (!sent && !pending) throw new Error(res.message || `HTTP ${r.status}`);
+      if (pending) console.warn('FormSubmit: the form is not activated yet. Open the email from FormSubmit and click "Activate Form"; requests sent before that are delivered after activation.');
+      form.reset(); say(SENT);
       conversion(ads && ads.lead); gtagEv('event', 'generate_lead', { currency: 'UAH' });
-    } catch {
-      say('Не надіслано: немає з’єднання. Дані залишились у формі — спробуйте ще раз або зателефонуйте.');
+    } catch (err) {
+      console.warn('Order form:', err && err.message);
+      say('Не вдалося надіслати заявку. Дані залишились у формі — спробуйте ще раз, зателефонуйте або напишіть нам у месенджер.');
     } finally { btn.disabled = false; }
   });
 });
