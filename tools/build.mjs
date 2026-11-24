@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 // Builds the Резерв 400 site from data/products.json and data/site.json into site/.
 //   node tools/build.mjs
-// - fills the <!-- build:NAME --> regions of site/index.html (models, specs, order form, footer, head, analytics)
-// - writes a page per generator (site/generatory/<slug>/), the buyer pages, 404, robots.txt, llms.txt,
-//   and, once data/site.json has a domain, sitemap.xml and the Google Merchant Center feed.
-// Empty fields in site.json are left off the pages; the build lists every one that Google Ads needs.
+// Every page (home, a page per generator, buyer pages, 404) comes from the templates below, so the header,
+// footer, contacts and order form are the same everywhere. Also writes robots.txt and llms.txt, and once
+// data/site.json has a domain, sitemap.xml and the Google Merchant Center feed.
+// Empty fields in site.json are left off the pages; the build lists every one Google Ads needs.
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -14,171 +14,210 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SITE = join(ROOT, 'site');
 const products = JSON.parse(readFileSync(join(ROOT, 'data/products.json'), 'utf8'));
 const cfg = JSON.parse(readFileSync(join(ROOT, 'data/site.json'), 'utf8'));
+const ICONS = JSON.parse(readFileSync(join(ROOT, 'tools/icon-paths.json'), 'utf8'));
 const YEAR = new Date().getFullYear();
 const TODAY = new Date().toISOString().slice(0, 10);
 const domain = (cfg.domain || '').replace(/\/+$/, '');
 const abs = p => (domain ? `${domain}/${p}` : '');
 
 const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const nb = s => String(s).replace(/ /g, ' ');
 const price = n => `${Math.round(n).toLocaleString('uk-UA').replace(/\s/g, ' ')} ₴`;
+const plain = s => s.replace(/ /g, ' ');
 const byPower = [...products].sort((a, b) => a.kw - b.kw || (a.body === 'open' ? -1 : 1));
-const withAts = byPower.filter(p => p.ats);
-const img = p => `assets/img/products/${p.image}.webp`;
+const minPrice = Math.min(...products.map(p => p.price));
 const IMG_SIZE = {
   'edon-50-kvt-vidkryta-rama': [478, 281], 'edon-50-kvt-u-kozhusi': [500, 264], 'edon-100-kvt-vidkryta-rama': [488, 309],
   'edon-100-kvt-u-kozhusi': [500, 264], 'edon-150-kvt-vidkryta-rama': [488, 309], 'edon-200-kvt-vidkryta-rama': [493, 267],
   'edon-gj-30gf-30-kvt': [537, 413],
 };
-const wh = p => { const [w, h] = IMG_SIZE[p.image] || [500, 300]; return `width="${w}" height="${h}"`; };
+const imgTag = (p, pre, { cls = '', lazy = true, sizes = '(max-width: 1023px) 92vw, 640px', priority = false } = {}) => {
+  const [w, h] = IMG_SIZE[p.image] || [500, 300];
+  const base = `${pre}assets/img/products/${p.image}`;
+  return `<img${cls ? ` class="${cls}"` : ''} src="${base}-2x.webp" srcset="${base}-240.webp 240w, ${base}.webp ${w}w, ${base}-2x.webp ${w * 2}w" sizes="${sizes}" width="${w}" height="${h}" alt="${esc(p.alt)}"${lazy ? ' loading="lazy"' : ''}${priority ? ' fetchpriority="high"' : ''} decoding="async">`;
+};
 const bodyName = p => (p.body === 'canopy' ? 'шумозахисний кожух' : 'відкрита рама');
 const stockText = p => (p.stock === 'in_stock' ? 'На складі' : 'Під замовлення');
-const telHref = () => `tel:${(cfg.phone || '').replace(/[^\d+]/g, '')}`;
+const digits = (cfg.phone || '').replace(/[^\d+]/g, '');
+const telHref = `tel:${digits}`;
+const phoneShown = cfg.phoneDisplay || cfg.phone;
 
-// ---------------------------------------------------------------- pieces shared by every page
-const navHtml = (pre, onIndex, orderHref = '#order') => {
+// ---------------------------------------------------------------- icons and contacts
+const icon = (name, cls = '') => {
+  if (ICONS[name]) return `<svg class="ic-${name} ${cls}" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="${ICONS[name]}"/></svg>`;
+  const ui = {
+    phone: '<path d="M5 4h3l2 5-2.5 1.5a11 11 0 0 0 6 6L15 14l5 2v3a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>',
+    sms: '<path d="M4 5h16v11H9l-5 4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 10.5h.01M12 10.5h.01M16 10.5h.01" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>',
+    mail: '<rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m4 7 8 6 8-6" fill="none" stroke="currentColor" stroke-width="1.8"/>',
+    arrow: '<path d="M5 12h13M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+    menu: '<path d="M4 7h16M4 17h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
+    pin: '<path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="9.5" r="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/>',
+  }[name];
+  return `<svg class="ic-${name} ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ui}</svg>`;
+};
+const MSG = {
+  viber: ['Viber', `viber://chat?number=%2B${digits.replace('+', '')}`],
+  telegram: ['Telegram', `https://t.me/${digits}`],
+  whatsapp: ['WhatsApp', `https://wa.me/${digits.replace('+', '')}`],
+  sms: ['SMS', `sms:${digits}`],
+};
+const messengers = () => (cfg.phone ? `<div class="chips">${(cfg.messengers || []).map(m => MSG[m] ? `<a class="chip" href="${MSG[m][1]}" data-msg="${m}"${m === 'telegram' || m === 'whatsapp' ? ' target="_blank" rel="noopener"' : ''}>${icon(m)}${MSG[m][0]}</a>` : '').join('')}</div>` : '');
+const payText = 'з ПДВ, без ПДВ або готівкою';
+
+// ---------------------------------------------------------------- head, header, footer, bar
+const FONTS = 'https://fonts.googleapis.com/css2?family=Geologica:wght@300..700&family=Martian+Mono:wght@300..500&display=swap';
+const headHtml = ({ pre, path, title, description, ld, ogImage, robots, ogType }) => {
+  const extra = [];
+  if (domain) extra.push(`<link rel="canonical" href="${domain}/${path}">`, `<meta property="og:url" content="${domain}/${path}">`);
+  if (cfg.googleSiteVerification) extra.push(`<meta name="google-site-verification" content="${esc(cfg.googleSiteVerification)}">`);
+  const og = ogImage ? (domain ? `${domain}/${ogImage}` : pre + ogImage) : (domain ? `${domain}/share.jpg` : `${pre}share.jpg`);
+  return `<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>${esc(title)}</title>
+<meta name="description" content="${esc(description)}">
+<meta name="robots" content="${robots}">
+<meta property="og:type" content="${ogType}">
+<meta property="og:locale" content="uk_UA">
+<meta property="og:site_name" content="${esc(cfg.name)}">
+<meta property="og:title" content="${esc(title)}">
+<meta property="og:description" content="${esc(description)}">
+<meta property="og:image" content="${og}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#0E0F11">
+<link rel="icon" href="${pre}favicon.svg" type="image/svg+xml">
+${extra.join('\n')}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="${FONTS}">
+<link rel="stylesheet" href="${pre}assets/app.css">
+${ld ? `<script type="application/ld+json">${JSON.stringify({ '@context': 'https://schema.org', ...ld })}</script>` : ''}
+${analytics()}
+</head>`;
+};
+
+const NAV = [['modeli', 'Моделі'], ['pidbir', 'Підбір потужності'], ['dostavka', 'Доставка'], ['oplata', 'Оплата'], ['pytannia', 'Питання'], ['zamovlennia', 'Контакти']];
+const headerHtml = (pre, onIndex) => {
   const a = id => (onIndex ? `#${id}` : `${pre}#${id}`);
-  return `<header class="nav">
-  <div class="wrap nav__bar">
-    <a class="skip-link" href="#top">Перейти до змісту</a>
-    <a class="nav__logo" href="${onIndex ? '#top' : pre || './'}"><span class="mark mark--initial" aria-hidden="true">Р</span>${esc(cfg.name)}</a>
-    <nav class="nav__links" aria-label="Головне меню">
-      <div class="nav__item"><a class="nav__link" href="${a('models')}">Моделі</a></div>
-      <div class="nav__item"><a class="nav__link" href="${a('ats')}">АВР</a></div>
-      <div class="nav__item"><a class="nav__link" href="${a('delivery')}">Доставка</a></div>
-      <div class="nav__item"><a class="nav__link" href="${a('faq')}">Питання</a></div>
-    </nav>
-    <div class="nav__actions">
-      <a class="btn btn--primary" href="${orderHref}">Замовити генератор</a>
+  return `<a class="skip" href="#main">Перейти до змісту</a>
+<header class="site-header">
+  <div class="wrap">
+    <a class="logo" href="${onIndex ? '#main' : pre || './'}"><span class="logo__mark" aria-hidden="true">Р4</span><span>${esc(cfg.name)}<small>дилер EDON</small></span></a>
+    <nav class="nav" aria-label="Головне меню">${NAV.slice(0, 5).map(([id, t]) => `<a href="${a(id)}">${t}</a>`).join('')}</nav>
+    <div class="head-actions">
+      ${cfg.phone ? `<a class="head-phone" href="${telHref}">${esc(phoneShown)}<small>${esc(cfg.hours || 'дзвінки й месенджери')}</small></a>` : ''}
+      <a class="btn btn--amber" href="#zamovlennia">Замовити генератор</a>
+      <button class="menu-btn" type="button" aria-expanded="false" aria-controls="menu" aria-label="Меню">${icon('menu')}</button>
     </div>
-    <button class="nav__toggle" type="button" aria-expanded="false" aria-label="Меню">
-      <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M2 5h14M2 13h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-    </button>
   </div>
-</header>`;
+</header>
+<div class="menu" id="menu">
+  ${NAV.map(([id, t]) => `<a href="${a(id)}">${t}</a>`).join('\n  ')}
+  <div class="btn-row">${cfg.phone ? `<a class="btn btn--amber" href="${telHref}">${icon('phone')}${esc(phoneShown)}</a>` : ''}</div>
+  ${messengers()}
+</div>`;
 };
 
-const contactItems = (pre) => {
-  const out = [];
-  if (cfg.phone) out.push(`<li><a href="${telHref()}">${esc(cfg.phoneDisplay || cfg.phone)}</a></li>`);
-  if (cfg.email) out.push(`<li><a href="mailto:${esc(cfg.email)}">${esc(cfg.email)}</a></li>`);
-  if (cfg.viber) out.push(`<li><a href="${esc(cfg.viber)}">Viber</a></li>`);
-  if (cfg.telegram) out.push(`<li><a href="${esc(cfg.telegram)}">Telegram</a></li>`);
-  if (cfg.street || cfg.city) out.push(`<li>${esc([cfg.street, cfg.city].filter(Boolean).join(', '))}</li>`);
-  if (cfg.hours) out.push(`<li>${esc(cfg.hours)}</li>`);
-  out.push(`<li><a href="${pre}kontakty/">Усі контакти</a></li>`);
-  return out.join('');
-};
-
-const footerLinks = (pre, onIndex) => {
-  const a = id => (onIndex ? `#${id}` : `${pre}#${id}`);
-  return `    <div class="closing__links">
-      <div class="grid">
-        <div class="span-4 stack-4">
-          <a class="nav__logo" href="${onIndex ? '#top' : pre || './'}">${esc(cfg.name)}</a>
-          <p class="footer__lede">Продаж і запуск дизельних генераторів EDON</p>
-        </div>
-        <div class="span-2 footer__col"><h3>Моделі</h3><ul>
-          <li><a href="${pre}generatory/edon-gj-30gf-30-kvt/">30 кВт</a></li>
-          <li><a href="${pre}generatory/edon-50-kvt-vidkryta-rama/">50 кВт</a></li>
-          <li><a href="${pre}generatory/edon-100-kvt-vidkryta-rama/">100 кВт</a></li>
-          <li><a href="${pre}generatory/edon-150-kvt-vidkryta-rama/">150 кВт</a></li>
-          <li><a href="${pre}generatory/edon-200-kvt-vidkryta-rama/">200 кВт</a></li>
-        </ul></div>
-        <div class="span-2 footer__col"><h3>Сервіс</h3><ul>
-          <li><a href="${a('ats')}">АВР</a></li>
-          <li><a href="${a('delivery')}">Доставка й запуск</a></li>
-          <li><a href="${a('specs')}">Характеристики</a></li>
-          <li><a href="${a('faq')}">Питання</a></li>
-        </ul></div>
-        <div class="span-2 footer__col"><h3>Покупцям</h3><ul>
-          <li><a href="${pre}dostavka-i-oplata/">Доставка й оплата</a></li>
-          <li><a href="${pre}harantiia-ta-povernennia/">Гарантія й повернення</a></li>
-          <li><a href="${pre}oferta/">Публічна оферта</a></li>
-          <li><a href="${pre}konfidentsiinist/">Конфіденційність</a></li>
-        </ul></div>
-        <div class="span-2 footer__col"><h3>Контакти</h3><ul class="footer__contacts">${contactItems(pre)}</ul></div>
+const footerHtml = pre => `<footer class="site-footer">
+  <div class="wrap">
+    <div class="grid">
+      <div class="foot-brand">
+        <a class="logo" href="${pre || './'}"><span class="logo__mark" aria-hidden="true">Р4</span><span>${esc(cfg.name)}<small>дилер EDON</small></span></a>
+        <p>Продаж, доставка й запуск промислових дизельних генераторів EDON 30–200 кВт по всій Україні.</p>
       </div>
-      <div class="footer__legal">
-        <span>&copy; ${YEAR} ${esc(cfg.name)}${cfg.legalName ? `, ${esc(cfg.legalName)}` : ''} &nbsp; <a href="${pre}konfidentsiinist/">Конфіденційність</a> &nbsp; <a href="${pre}oferta/">Умови продажу</a></span>
-        <div class="socials"></div>
-        <a class="credits" href="${pre}credits/">Фотографії: Wikimedia Commons; товари EDON — фото постачальника</a>
-      </div>
-    </div>`;
-};
+      <div><h3>Моделі</h3><ul>${byPower.map(p => `<li><a href="${pre}generatory/${p.slug}/">${esc(p.name)}</a></li>`).join('')}</ul></div>
+      <div><h3>Покупцям</h3><ul>
+        <li><a href="${pre}dostavka-i-oplata/">Доставка й оплата</a></li>
+        <li><a href="${pre}harantiia-ta-povernennia/">Гарантія й повернення</a></li>
+        <li><a href="${pre}oferta/">Публічна оферта</a></li>
+        <li><a href="${pre}konfidentsiinist/">Політика конфіденційності</a></li>
+        <li><a href="${pre}kontakty/">Контакти й реквізити</a></li>
+      </ul></div>
+      <div><h3>Контакти</h3><ul>
+        ${cfg.phone ? `<li><a href="${telHref}">${esc(phoneShown)}</a></li><li>Viber, Telegram, WhatsApp, SMS — на цей номер</li>` : ''}
+        ${cfg.email ? `<li><a href="mailto:${esc(cfg.email)}">${esc(cfg.email)}</a></li>` : ''}
+        ${cfg.city ? `<li>${esc([cfg.street, cfg.city].filter(Boolean).join(', '))}</li>` : ''}
+        ${cfg.hours ? `<li>${esc(cfg.hours)}</li>` : ''}
+      </ul></div>
+    </div>
+    <div class="legal">
+      ${cfg.legalName ? `<p>Продавець: ${esc(cfg.legalName)}${cfg.legalCode ? `, РНОКПП ${esc(cfg.legalCode)}` : ''}${cfg.legalAddress ? `, ${esc(cfg.legalAddress)}` : ''}. Ми продаємо генератори EDON як дилер і не є їх виробником.</p>` : '<p>Ми продаємо генератори EDON як дилер і не є їх виробником.</p>'}
+      <p>© ${YEAR} ${esc(cfg.name)} · <a href="${pre}konfidentsiinist/">Конфіденційність</a> · <a href="${pre}oferta/">Умови продажу</a> · <a href="${pre}credits/">Джерела фотографій</a></p>
+    </div>
+  </div>
+</footer>
+<nav class="bar" aria-label="Швидкий зв’язок">
+  ${cfg.phone ? `<a class="btn btn--amber" href="${telHref}">${icon('phone')}Подзвонити</a>` : ''}
+  <a class="btn btn--ghost" href="#zamovlennia">Написати</a>
+</nav>`;
 
-// the order form: posts to the form service in site.json, else a mailto stand-in
-const orderForm = (selected) => {
+// ---------------------------------------------------------------- contact + order section (every page)
+const orderForm = selected => {
   const endpoint = cfg.formEndpoint || '';
-  const action = endpoint || `mailto:${cfg.fallbackEmail}`;
-  const opts = byPower.map(p => `<option value="${p.sku}" data-img="${img(p)}" data-alt="${esc(p.alt)}"${p.slug === selected ? ' selected' : ''}>${esc(p.name)} — ${price(p.price)}</option>`).join('\n          ');
-  return `          <form class="form" id="order-form" action="${esc(action)}" method="post"${endpoint ? '' : ' enctype="text/plain"'} data-endpoint="${esc(endpoint)}" data-sent="Заявку на генератор прийнято. Менеджер передзвонить на вказаний номер." data-sending="Надсилаємо" data-failed="Не надіслано: немає з’єднання. Дані залишилися у формі, спробуйте ще раз." data-fix="Виправте полів: {n}." novalidate>
-            <div class="field"><label for="f-name">Ім’я</label>
-              <input id="f-name" name="name" type="text" autocomplete="name" required aria-describedby="f-name-err">
-              <p class="field__error" id="f-name-err" hidden>Напишіть, як до вас звертатися.</p></div>
-            <div class="field"><label for="f-phone">Телефон</label>
-              <input id="f-phone" name="phone" type="tel" autocomplete="tel" inputmode="tel" required pattern="[+0-9()\\-\\s]{10,}" aria-describedby="f-phone-err">
-              <p class="field__error" id="f-phone-err" hidden>Напишіть номер з кодом оператора, наприклад 0XX XXX XX XX.</p></div>
-            <div class="field field--full"><label for="f-model">Модель</label>
-              <select id="f-model" name="model" data-order-model>
-          <option value="">Ще не знаю, допоможіть підібрати</option>
-          ${opts}
-              </select></div>
-            <div class="field field--full"><label for="f-city">Населений пункт</label>
-              <input id="f-city" name="city" type="text" autocomplete="address-level2"></div>
-            <div class="field field--full"><label for="f-note">Що буде живити генератор</label>
-              <textarea id="f-note" name="note" rows="2"></textarea></div>
-            <div class="btn-row"><button class="btn btn--primary" type="submit">Замовити генератор</button></div>
-            <p class="form__status" role="status" data-form-status></p>
-            <p class="form__consent">Надсилаючи заявку, ви погоджуєтеся з <a href="${'{{pre}}'}konfidentsiinist/">політикою конфіденційності</a>. Оплата лише після розрахунку й погодження.</p>
-          </form>`;
+  const opts = byPower.map(p => `<option value="${p.sku}"${p.slug === selected ? ' selected' : ''}>${esc(p.name)} — ${price(p.price)}</option>`).join('');
+  return `<form class="form" data-order-form data-endpoint="${esc(endpoint)}" data-mail="${esc(cfg.fallbackEmail || cfg.email || '')}" ${endpoint ? `action="${esc(endpoint)}" method="post"` : ''} novalidate>
+        <div class="field"><label for="f-name">Ім’я</label><input id="f-name" name="name" type="text" autocomplete="name" required aria-describedby="f-name-err"><p class="field__err" id="f-name-err" hidden>Напишіть, як до вас звертатися.</p></div>
+        <div class="field"><label for="f-phone">Телефон</label><input id="f-phone" name="phone" type="tel" autocomplete="tel" inputmode="tel" required minlength="10" aria-describedby="f-phone-err"><p class="field__err" id="f-phone-err" hidden>Номер з кодом оператора, наприклад 0XX XXX XX XX.</p></div>
+        <div class="field field--full"><label for="f-model">Модель</label><select id="f-model" name="model"><option value="">Ще не знаю — допоможіть підібрати</option>${opts}</select></div>
+        <div class="field"><label for="f-city">Населений пункт</label><input id="f-city" name="city" type="text" autocomplete="address-level2"></div>
+        <div class="field"><label for="f-pay">Оплата</label><select id="f-pay" name="payment"><option>З ПДВ</option><option>Без ПДВ</option><option>Готівкою при запуску</option><option>Ще не знаю</option></select></div>
+        <div class="field field--full"><label for="f-note">Що буде живити генератор</label><textarea id="f-note" name="note" rows="3"></textarea></div>
+        <div class="btn-row"><button class="btn btn--amber" type="submit">Замовити генератор</button></div>
+        <p class="form__status" role="status" aria-live="polite"></p>
+        <p class="form__note">Надсилаючи заявку, ви погоджуєтесь з <a href="{{pre}}konfidentsiinist/">політикою конфіденційності</a>. Платите лише після розрахунку й погодження.</p>
+      </form>`;
 };
+const contactSection = (pre, selected = '') => `<section class="section dark" id="zamovlennia" aria-labelledby="zam-h">
+  <div class="wrap contact">
+    <div style="display:grid;gap:24px">
+      <p class="label">Замовлення й консультація</p>
+      <h2 id="zam-h">Зателефонуйте або напишіть, куди зручно</h2>
+      ${cfg.phone ? `<a class="big-phone" href="${telHref}">${esc(phoneShown)}</a>` : ''}
+      ${cfg.phone ? `<p class="lead">На цей номер можна дзвонити й писати у Viber, Telegram, WhatsApp або SMS. Порахуємо потужність під ваш перелік обладнання безкоштовно.</p>` : ''}
+      ${messengers()}
+      <ul class="contact__list">
+        ${cfg.email ? `<li>${icon('mail', 'sr-icon')} <a href="mailto:${esc(cfg.email)}">${esc(cfg.email)}</a></li>` : ''}
+        ${cfg.hours ? `<li>${esc(cfg.hours)}</li>` : ''}
+        ${cfg.city ? `<li>Магазин: ${esc([cfg.street, cfg.city].filter(Boolean).join(', '))} · <a class="link" href="https://www.google.com/maps/search/?api=1&amp;query=${encodeURIComponent([cfg.street, cfg.city].join(' '))}" target="_blank" rel="noopener">Як дістатися</a></li>` : ''}
+      </ul>
+    </div>
+    <div class="form-card">
+      <p class="label" style="margin-bottom:20px">Заявка на генератор</p>
+      ${orderForm(selected).replaceAll('{{pre}}', pre)}
+    </div>
+  </div>
+</section>`;
 
-const orderContacts = () => {
-  const lines = [];
-  if (cfg.phone) lines.push(`<a href="${telHref()}">${esc(cfg.phoneDisplay || cfg.phone)}</a>`);
-  if (cfg.email) lines.push(`<a href="mailto:${esc(cfg.email)}">${esc(cfg.email)}</a>`);
-  if (cfg.hours) lines.push(`<span>${esc(cfg.hours)}</span>`);
-  return lines.length ? `          <p class="contact-lines">${lines.join('')}</p>` : '';
-};
-
-// ---------------------------------------------------------------- structured data (schema.org)
-const sellerLd = () => ({
+// ---------------------------------------------------------------- structured data
+const storeLd = () => ({
   '@type': 'Store',
   '@id': abs('#store') || '#store',
   name: cfg.name,
   ...(cfg.legalName ? { legalName: cfg.legalName } : {}),
-  ...(domain ? { url: `${domain}/` } : {}),
+  ...(domain ? { url: `${domain}/`, image: `${domain}/share.jpg` } : {}),
   ...(cfg.phone ? { telephone: cfg.phone } : {}),
   ...(cfg.email ? { email: cfg.email } : {}),
   ...(cfg.city ? { address: { '@type': 'PostalAddress', addressCountry: 'UA', addressLocality: cfg.city, ...(cfg.street ? { streetAddress: cfg.street } : {}) } } : {}),
+  ...(cfg.hours ? { openingHours: 'Mo-Su 08:00-20:00' } : {}),
+  ...(cfg.legalCode ? { taxID: cfg.legalCode } : {}),
+  paymentAccepted: 'Готівка, безготівковий розрахунок з ПДВ, безготівковий розрахунок без ПДВ',
+  currenciesAccepted: 'UAH',
   areaServed: { '@type': 'Country', name: 'Україна' },
   description: 'Продаж промислових дизельних генераторів EDON 30–200 кВт з безкоштовною доставкою по Україні, запуском на об’єкті та навчанням персоналу.',
-  ...(domain ? { image: `${domain}/share.jpg` } : {}),
-  priceRange: `${price(byPower[0].price)}–${price(byPower.at(-1).price)}`.replace(/ /g, ' '),
+  priceRange: plain(`${price(minPrice)}–${price(Math.max(...products.map(p => p.price)))}`),
 });
-const shippingLd = {
-  '@type': 'OfferShippingDetails',
-  shippingRate: { '@type': 'MonetaryAmount', value: 0, currency: 'UAH' },
-  shippingDestination: { '@type': 'DefinedRegion', addressCountry: 'UA' },
-};
+const shippingLd = { '@type': 'OfferShippingDetails', shippingRate: { '@type': 'MonetaryAmount', value: 0, currency: 'UAH' }, shippingDestination: { '@type': 'DefinedRegion', addressCountry: 'UA' } };
 const returnLd = {
-  '@type': 'MerchantReturnPolicy',
-  applicableCountry: 'UA',
-  returnPolicyCategory: 'https://schema.org/MerchantReturnFiniteReturnWindow',
-  merchantReturnDays: 14,
-  returnMethod: 'https://schema.org/ReturnByMail',
-  returnFees: 'https://schema.org/FreeReturn',
+  '@type': 'MerchantReturnPolicy', applicableCountry: 'UA', returnPolicyCategory: 'https://schema.org/MerchantReturnFiniteReturnWindow',
+  merchantReturnDays: 14, returnMethod: 'https://schema.org/ReturnByMail', returnFees: 'https://schema.org/FreeReturn',
   ...(domain ? { merchantReturnLink: `${domain}/harantiia-ta-povernennia/` } : {}),
 };
 const productLd = p => ({
-  '@type': 'Product',
-  name: p.fullName,
-  sku: p.sku,
-  mpn: p.sku,
-  brand: { '@type': 'Brand', name: 'EDON' },
-  category: 'Дизельні генератори',
+  '@type': 'Product', name: p.fullName, sku: p.sku, mpn: p.sku, brand: { '@type': 'Brand', name: 'EDON' }, category: 'Дизельні генератори',
   description: `${p.lead} ${p.fit}`,
-  image: domain ? [`${domain}/assets/img/products/${p.image}.jpg`] : [`assets/img/products/${p.image}.jpg`],
+  image: [domain ? `${domain}/assets/img/products/${p.image}.jpg` : `assets/img/products/${p.image}.jpg`],
   ...(domain ? { url: `${domain}/generatory/${p.slug}/` } : {}),
   weight: { '@type': 'QuantitativeValue', value: p.weight, unitCode: 'KGM' },
   additionalProperty: [
@@ -190,149 +229,35 @@ const productLd = p => ({
     { '@type': 'PropertyValue', name: 'АВР у комплекті', value: p.ats ? 'так' : 'ні' },
   ],
   offers: {
-    '@type': 'Offer',
-    price: p.price,
-    priceCurrency: 'UAH',
+    '@type': 'Offer', price: p.price, priceCurrency: 'UAH',
     availability: p.stock === 'in_stock' ? 'https://schema.org/InStock' : 'https://schema.org/PreOrder',
-    itemCondition: 'https://schema.org/NewCondition',
-    ...(domain ? { url: `${domain}/generatory/${p.slug}/` } : {}),
-    seller: { '@id': abs('#store') || '#store' },
-    shippingDetails: shippingLd,
-    hasMerchantReturnPolicy: returnLd,
+    itemCondition: 'https://schema.org/NewCondition', ...(domain ? { url: `${domain}/generatory/${p.slug}/` } : {}),
+    seller: { '@id': abs('#store') || '#store' }, shippingDetails: shippingLd, hasMerchantReturnPolicy: returnLd,
   },
 });
-const ldScript = obj => `<script type="application/ld+json">${JSON.stringify({ '@context': 'https://schema.org', ...obj })}</script>`;
-
-// ---------------------------------------------------------------- head extras: canonical, verification, analytics
-const headExtra = (path, ld) => {
-  const out = [];
-  if (domain) out.push(`<link rel="canonical" href="${domain}/${path}">`, `<meta property="og:url" content="${domain}/${path}">`);
-  if (cfg.googleSiteVerification) out.push(`<meta name="google-site-verification" content="${esc(cfg.googleSiteVerification)}">`);
-  if (ld) out.push(ldScript(ld));
-  return out.join('\n');
-};
-const analytics = () => {
+const breadcrumbLd = items => ({ '@type': 'BreadcrumbList', itemListElement: items.map(([url, name], i) => ({ '@type': 'ListItem', position: i + 1, name, ...(url !== null && domain ? { item: `${domain}/${url}` } : {}) })) });
+function analytics() {
   const ids = [cfg.googleAdsId, cfg.ga4Id].filter(Boolean);
   if (!ids.length) return '';
   const ads = cfg.googleAdsId ? `window.SITE_ADS=${JSON.stringify({ id: cfg.googleAdsId, lead: cfg.googleAdsLeadLabel || '', call: cfg.googleAdsCallLabel || '' })};` : '';
   return `<script async src="https://www.googletagmanager.com/gtag/js?id=${esc(ids[0])}"></script>
-<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}
-gtag('consent','default',{ad_storage:'granted',ad_user_data:'granted',ad_personalization:'granted',analytics_storage:'granted'});
-gtag('js',new Date());${ids.map(id => `gtag('config','${esc(id)}');`).join('')}${ads}</script>`;
-};
-
-// ---------------------------------------------------------------- regions in index.html
-const region = (html, name, content) => {
-  const re = new RegExp(`(<!-- build:${name} -->)[\\s\\S]*?(<!-- /build:${name} -->)`);
-  if (!re.test(html)) throw new Error(`index.html has no region ${name}`);
-  return html.replace(re, `$1\n${content}\n$2`);
-};
-
-const tile = (p, pre = '') => `          <a class="tile tile--product span-4" href="${pre}generatory/${p.slug}/">
-            <div class="tile__media"><img src="${pre}${img(p)}" srcset="${pre}assets/img/products/${p.image}-240.webp 240w, ${pre}${img(p)} ${IMG_SIZE[p.image] ? IMG_SIZE[p.image][0] : 500}w" sizes="(max-width: 639px) 46vw, (max-width: 1023px) 30vw, 410px" alt="${esc(p.alt)}" ${wh(p)} loading="lazy" decoding="async" data-source="supplier" data-subject="${esc(p.sku)}"></div>
-            <div class="tile__head"><h3>${esc(p.name)}</h3><span class="tile__price">${price(p.price)}</span></div>
-            <p class="tile__facts"><span class="stock">${stockText(p)}</span> · ${p.kva}&nbsp;кВА · ${p.cylinders}&nbsp;циліндри · ${p.weight}&nbsp;кг</p>
-          </a>`;
-
-const modelsHtml = () => `      <div class="group">
-        <div class="section-head">
-          <h2 id="models-h">Генератори EDON 50–200 кВт з АВР. <span class="muted">Усі шість моделей на складі.</span></h2>
-        </div>
-        <div class="grid">
-${withAts.slice(0, 3).map(p => tile(p)).join('\n')}
-        </div>
-      </div>
-      <div class="grid">
-${withAts.slice(3, 6).map(p => tile(p)).join('\n')}
-      </div>`;
-
-const specsHtml = (pre = '') => `        <table class="spec-table">
-          <thead><tr><th scope="col">Модель</th><th scope="col">Потужність</th><th scope="col">Двигун</th><th scope="col">Пальне</th><th scope="col">Вага</th><th scope="col">АВР</th><th scope="col">Ціна</th></tr></thead>
-          <tbody>
-${byPower.map(p => `            <tr><th scope="row"><a href="${pre}generatory/${p.slug}/">${esc(p.name)}</a></th><td class="num" data-label="Потужність:">${p.kw} кВт / ${p.kva} кВА</td><td data-label="Двигун:">${p.cylinders} циліндри</td><td class="num" data-label="Пальне:">${esc(p.fuelShort)}</td><td class="num" data-label="Вага:">${p.weight} кг</td><td data-label="АВР:">${p.ats ? 'у комплекті' : 'окремо'}</td><td class="num" data-label="Ціна:">${price(p.price)}</td></tr>`).join('\n')}
-          </tbody>
-        </table>`;
-
-const indexLd = () => ({
-  '@graph': [
-    sellerLd(),
-    { '@type': 'WebSite', name: cfg.name, inLanguage: 'uk', ...(domain ? { url: `${domain}/` } : {}) },
-    { '@type': 'ItemList', name: 'Дизельні генератори EDON у наявності', itemListElement: byPower.map((p, i) => ({ '@type': 'ListItem', position: i + 1, item: productLd(p) })) },
-  ],
-});
-
-let index = readFileSync(join(SITE, 'index.html'), 'utf8');
-index = region(index, 'head', headExtra('', indexLd()));
-index = region(index, 'models', modelsHtml());
-index = region(index, 'specs', specsHtml());
-index = region(index, 'order-contacts', orderContacts());
-index = region(index, 'order-form', orderForm('').replaceAll('{{pre}}', ''));
-index = region(index, 'footer', footerLinks('', true));
-index = region(index, 'analytics', analytics());
-writeFileSync(join(SITE, 'index.html'), index);
-
-// ---------------------------------------------------------------- inner pages
-const HEAD_COMMON = pre => `<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="${pre}assets/system.css">
-<link rel="stylesheet" href="${pre}assets/ui/cards.css">
-<link rel="stylesheet" href="${pre}assets/motion/motion.css">
-<link rel="stylesheet" href="${pre}assets/layout/layout.css">
-<style>
-:root {
-  --p-bg: #dfdedb; --p-surface: #d3d2ce; --p-ink: #26251e; --p-muted: #5a5850;
-  --p-accent: #2456d6; --p-accent-ink: #ffffff; --p-action: #2456d6; --p-action-ink: #ffffff;
-  --p-inv-bg: #26251e; --p-inv-surface: #313029; --p-inv-ink: #dfdedb; --p-inv-muted: #9e9d99;
-  --p-inv-accent: #dfdedb; --p-inv-accent-ink: #26251e; --p-inv-action: #dfdedb; --p-inv-action-ink: #26251e;
-  --font-display: "Geist", system-ui, sans-serif; --font-text: "Geist", system-ui, sans-serif;
-  --display-weight: 400; --display-tracking: -0.035em; --display-tracking-xl: -0.045em;
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());${ids.map(id => `gtag('config','${esc(id)}');`).join('')}${ads}</script>`;
 }
-</style>
-<link rel="stylesheet" href="${pre}assets/site.css">`;
 
-const page = ({ path, title, description, body, ld, ogImage, robots = 'index, follow, max-image-preview:large', hasOrder = false }) => {
+// ---------------------------------------------------------------- page shell
+const writePage = ({ path, title, description, main, ld, ogImage, robots = 'index, follow, max-image-preview:large', ogType = 'website', selected = '', onIndex = false, contact = true }) => {
   const depth = path ? path.split('/').filter(Boolean).length : 0;
   const pre = '../'.repeat(depth);
-  const html = `<!doctype html>
-<html lang="uk" data-type="product" data-radius="soft" data-buttons="block" data-motion class="page-flow">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>${esc(title)}</title>
-<meta name="description" content="${esc(description)}">
-<meta name="robots" content="${robots}">
-<meta property="og:type" content="${ld && ld['@type'] === 'Product' ? 'product' : 'website'}">
-<meta property="og:locale" content="uk_UA">
-<meta property="og:site_name" content="${esc(cfg.name)}">
-<meta property="og:title" content="${esc(title)}">
-<meta property="og:description" content="${esc(description)}">
-<meta property="og:image" content="${ogImage ? (domain ? `${domain}/${ogImage}` : pre + ogImage) : (domain ? `${domain}/share.jpg` : `${pre}share.jpg`)}">
-<meta name="twitter:card" content="summary_large_image">
-<link rel="icon" href="${pre}favicon.svg" type="image/svg+xml">
-<meta name="theme-color" content="#dfdedb">
-<meta name="site-kind" content="other">
-<meta name="page-type" content="product">
-${headExtra(path ? `${path}/` : '', ld)}
-${HEAD_COMMON(pre)}
-</head>
+  const html = `${headHtml({ pre, path: path ? `${path}/` : '', title, description, ld, ogImage, robots, ogType })}
 <body>
-${navHtml(pre, false, hasOrder ? '#order' : `${pre}#order`)}
-<main id="top">
-${body.replaceAll('{{pre}}', pre)}
+${headerHtml(pre, onIndex)}
+<main id="main">
+${main.replaceAll('{{pre}}', pre)}
+${contact ? contactSection(pre, selected) : ''}
 </main>
-<footer class="footer closing footer--flow" id="contact">
-  <div class="wrap">
-${footerLinks(pre, false)}
-  </div>
-</footer>
-<nav class="actionbar" aria-label="Швидкі дії">
-  <a class="btn btn--primary" href="${hasOrder ? '#order' : `${pre}#order`}">Замовити генератор</a>
-</nav>
-<script type="module" src="${pre}assets/system.js"></script>
-<script type="module" src="${pre}assets/motion/motion.js"></script>
-<script type="module" src="${pre}assets/site.js"></script>
-${analytics()}
+${footerHtml(pre)}
+<script type="application/json" id="models-data">${JSON.stringify(byPower.map(p => ({ sku: p.sku, kw: p.kw, body: p.body, name: p.name, price: p.price, stockText: stockText(p), ats: p.ats, alt: p.alt, img2x: `${pre}assets/img/products/${p.image}-2x.webp`, url: `${pre}generatory/${p.slug}/` })))}</script>
+<script src="${pre}assets/app.js" defer></script>
 </body>
 </html>
 `;
@@ -341,201 +266,309 @@ ${analytics()}
   writeFileSync(file, html);
 };
 
-const crumbs = (pre, items) => `<nav class="crumbs" aria-label="Навігаційний ланцюжок"><ol><li><a href="${pre}">Головна</a></li>${items.map(([href, t]) => href ? `<li><a href="${href}">${esc(t)}</a></li>` : `<li aria-current="page">${esc(t)}</li>`).join('')}</ol></nav>`;
-const breadcrumbLd = items => ({ '@type': 'BreadcrumbList', itemListElement: items.map(([url, name], i) => ({ '@type': 'ListItem', position: i + 1, name, ...(url && domain ? { item: `${domain}/${url}` } : {}) })) });
+// ---------------------------------------------------------------- home page sections
+const hero = () => {
+  const p200 = products.find(p => p.slug === 'edon-200-kvt-vidkryta-rama');
+  return `<section class="hero dark" aria-labelledby="hero-h">
+  <div class="wrap">
+    <div class="hero__text">
+      <p class="label">Дилер EDON · ${esc(cfg.city || 'Україна')} · доставка по всій Україні</p>
+      <h1 id="hero-h">Промислові дизельні генератори 30–200&nbsp;кВт</h1>
+      <p class="lead">Сім моделей EDON на складі. Безкоштовно довозимо до вашого об’єкта, запускаємо генератор і навчаємо персонал. Оплата ${payText}.</p>
+      <div class="btn-row">
+        <a class="btn btn--amber" href="#zamovlennia">Замовити генератор${icon('arrow')}</a>
+        ${cfg.phone ? `<a class="btn btn--ghost" href="${telHref}">${icon('phone')}${esc(phoneShown)}</a>` : `<a class="btn btn--ghost" href="#modeli">Обрати модель</a>`}
+      </div>
+      ${cfg.phone ? `<div class="hero__msg"><p class="muted" style="font-size:15px">Або напишіть на цей номер, куди зручно:</p>${messengers()}</div>` : ''}
+    </div>
+    <div class="stage" aria-hidden="false">
+      <p class="stage__num" aria-hidden="true">200<small>кВт</small></p>
+      <div class="stage__price"><span class="label">7 моделей на складі</span><b>від ${price(minPrice)}</b></div>
+      <div class="stage__floor"></div>
+      ${imgTag(p200, '', { cls: 'stage__img', lazy: false, priority: true, sizes: '(max-width: 1023px) 92vw, 720px' })}
+      <p class="callout" style="--x:31%;--y:39%"><i></i><span>6 циліндрів · рідинне охолодження</span></p>
+      <p class="callout callout--left" style="--x:86%;--y:60%;--l:32px"><i></i><span>Альтернатор 400/230 В</span></p>
+      <p class="callout" style="--x:18%;--y:89%"><i></i><span>Рама · 1650 кг</span></p>
+    </div>
+  </div>
+  <dl class="facts">
+    <div class="wrap">
+      <div><dt>7</dt><dd>моделей EDON на складі, від 30 до 200 кВт</dd></div>
+      <div><dt>0&nbsp;₴</dt><dd>доставка до вашого об’єкта в будь-яку область</dd></div>
+      <div><dt>12&nbsp;міс.</dt><dd>гарантії; запуск і навчання персоналу на місці</dd></div>
+      <div><dt>3</dt><dd>способи оплати: з ПДВ, без ПДВ або готівкою</dd></div>
+    </div>
+  </dl>
+</section>`;
+};
 
-const SIZING = [
-  ['Магазин або кафе з холодильними вітринами', 25], ['СТО з підйомниками й компресором', 35], ['Ферма з доїльним залом і вентиляцією', 45],
-  ['Цех на 5–8 верстатів до 7,5 кВт', 60], ['Виробництво з кількома лініями', 110], ['Готель або торговий центр', 140], ['Великий холодильний склад', 180],
+const specRows = p => [
+  ['Потужність', `${p.kw} кВт / ${p.kva} кВА`], ['Напруга', '400/230 В, 3 фази'], ['Двигун', p.engine],
+  ['Пальне', p.fuelShort], ['Вага', `${p.weight} кг`], ['АВР', p.ats ? 'у комплекті' : 'окремо'],
+  ...(p.noise ? [['Шум', p.noise]] : []), ...(p.dims ? [['Габарити', p.dims]] : []),
 ];
-const verdict = (need, kw) => (need <= kw * 0.8 ? 'вистачить із запасом' : need <= kw ? 'на межі' : 'замало');
+const modelPanel = p => `<article class="model" data-model-panel="${p.sku}" aria-labelledby="m-${p.sku}">
+      <div class="model__pic">
+        <span class="model__kw" aria-hidden="true">${p.kw}</span>
+        <span class="model__tag dot-ok">${stockText(p)}</span>
+        ${imgTag(p, '', {})}
+      </div>
+      <div class="model__info">
+        <div style="display:grid;gap:8px"><p class="label">${esc(bodyName(p))} · ${esc(p.sku)}</p><h3 id="m-${p.sku}">${esc(p.fullName)}</h3></div>
+        <p class="price">${price(p.price)}</p>
+        <dl class="specs">${specRows(p).map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>
+        <ul class="incl"><li>Доставка 0 ₴</li><li>Запуск на об’єкті</li><li>Навчання персоналу</li><li>Гарантія 12 міс.</li></ul>
+        <div class="btn-row"><a class="btn btn--amber" href="#zamovlennia" data-order="${p.sku}">Замовити цю модель</a><a class="btn btn--line" href="generatory/${p.slug}/">Усі характеристики</a></div>
+      </div>
+    </article>`;
 
-// product pages
+const modelsSection = () => {
+  const kws = [...new Set(byPower.map(p => p.kw))];
+  return `<section class="section" id="modeli" aria-labelledby="modeli-h">
+  <div class="wrap">
+    <div class="head head--row">
+      <div style="display:grid;gap:16px"><p class="label">Каталог · ${products.length} моделей на складі</p><h2 id="modeli-h">Оберіть потужність</h2></div>
+      <a class="link" href="#porivniannia">Порівняти всі моделі в таблиці</a>
+    </div>
+    <div class="switch" data-switch data-default="100">
+      <div class="power" role="group" aria-label="Потужність генератора">
+        ${kws.map(k => { const from = Math.min(...products.filter(p => p.kw === k).map(p => p.price)); return `<button type="button" data-kw="${k}" aria-pressed="${k === 100}"><b>${k}</b><span>кВт · від ${price(from)}</span></button>`; }).join('\n        ')}
+      </div>
+      <div class="body-toggle" role="group" aria-label="Виконання"><button type="button" data-body="open" aria-pressed="true">Відкрита рама</button><button type="button" data-body="canopy" aria-pressed="false">У кожусі</button></div>
+    </div>
+    ${byPower.map(modelPanel).join('\n    ')}
+  </div>
+</section>`;
+};
+
+const PRESETS = [['Магазин, кафе', 25], ['СТО', 35], ['Ферма', 45], ['Цех на 5–8 верстатів', 60], ['Виробництво', 110], ['Готель, ТЦ', 140], ['Холодильний склад', 180]];
+const calcSection = () => `<section class="section dark" id="pidbir" aria-labelledby="pidbir-h">
+  <div class="wrap">
+    <div class="head"><p class="label">Калькулятор потужності</p><h2 id="pidbir-h">Скільки кВт потрібно вашому об’єкту</h2><p class="lead">Оберіть тип об’єкта або вкажіть пікове навантаження. Калькулятор додасть запас 25%, а для електродвигунів — 50% на пускові струми.</p></div>
+    <div class="calc" data-calc>
+      <div class="calc__in">
+        <div class="presets" role="group" aria-label="Тип об’єкта">${PRESETS.map(([t, k], i) => `<button type="button" data-kw="${k}" aria-pressed="${i === 3}">${esc(t)}<small>≈${k}&nbsp;кВт</small></button>`).join('')}</div>
+        <div class="range">
+          <div class="range__top"><label for="c-peak">Пікове навантаження обладнання</label><output for="c-peak" aria-live="polite">60<small>кВт</small></output></div>
+          <input id="c-peak" type="range" min="5" max="220" step="5" value="60">
+        </div>
+        <label class="check"><input id="c-motors" type="checkbox"><span>Є електродвигуни: компресори, насоси, ліфти, верстати. На пуску вони беруть у 3–6 разів більше струму.</span></label>
+        <p class="muted" style="font-size:15px">Розрахунок орієнтовний. Точну потужність порахуємо безкоштовно за переліком вашого обладнання.</p>
+      </div>
+      <div class="result" data-result>
+        <p class="label">Рекомендуємо</p>
+        <div class="result__model"><div style="display:grid;gap:8px"><p class="result__name" data-r-name>EDON 100 кВт, відкрита рама</p><p class="mono" data-r-price style="color:var(--on-dark-2)"></p></div><img data-r-img src="assets/img/products/edon-100-kvt-vidkryta-rama-2x.webp" alt="" width="488" height="309" loading="lazy"></div>
+        <div class="gauge"><div class="range__top"><span class="muted" style="font-size:14px">Навантаження генератора</span><b class="mono" data-r-load>60%</b></div><div class="gauge__bar"><span class="gauge__ok"></span><span class="gauge__fill"></span></div><div class="gauge__scale"><span>0%</span><span>50–75% оптимум</span><span>100%</span></div></div>
+        <p data-r-text style="color:var(--on-dark-2)"></p>
+        <div class="btn-row"><a class="btn btn--amber" href="#zamovlennia" data-r-btn data-order="">Замовити</a><a class="btn btn--ghost" data-r-link href="#modeli">Характеристики</a></div>
+      </div>
+    </div>
+  </div>
+</section>`;
+
+const STEPS = [
+  ['Розрахунок', 'Дзвоните або пишете. Менеджер питає, що живитиме генератор, і рахує потужність з урахуванням пускових струмів.'],
+  ['Доставка 0 ₴', 'Привозимо вантажним авто до вашого об’єкта в будь-яку область. Для розвантаження потрібен навантажувач або маніпулятор.'],
+  ['Перший запуск', 'Фахівець перевіряє майданчик, вихлоп і підключення, заводить генератор і дає йому навантаження.'],
+  ['Навчання', 'Показуємо персоналу запуск, зупинку, обкатку 50 мотогодин і щомісячну перевірку. Далі — гарантія 12 місяців.'],
+];
+const processSection = () => `<section class="section" id="dostavka" aria-labelledby="dostavka-h">
+  <div class="wrap">
+    <div class="head head--row"><div style="display:grid;gap:16px"><p class="label">Доставка, запуск, навчання</p><h2 id="dostavka-h">Від дзвінка до світла на вашому об’єкті</h2></div><a class="link" href="dostavka-i-oplata/">Умови доставки й оплати</a></div>
+    <div class="split split--top">
+      <figure class="photo" style="aspect-ratio:4/3.4"><img src="assets/img/photo-f80268893-c.webp" srcset="assets/img/photo-f80268893-c-520.webp 520w, assets/img/photo-f80268893-c.webp 1040w" sizes="(max-width: 1023px) 92vw, 520px" width="1040" height="848" alt="Кран опускає дизельну електростанцію на бетонний майданчик, монтажники тримають її стропами" loading="lazy" decoding="async"></figure>
+      <ol class="cards cards--2">
+        ${STEPS.map(([t, d], i) => `<li class="card"><span class="card__num">0${i + 1}</span><h3>${t}</h3><p>${d}</p></li>`).join('\n        ')}
+      </ol>
+    </div>
+  </div>
+</section>`;
+
+const atsSection = () => `<section class="section dark-2" id="avr" aria-labelledby="avr-h">
+  <div class="wrap split">
+    <div style="display:grid;gap:20px">
+      <p class="label">Автоматичний ввід резерву</p>
+      <h2 id="avr-h">АВР у комплекті з усіма моделями від 50&nbsp;кВт</h2>
+      <p class="lead">Зникла напруга в мережі — АВР сам запускає генератор і перемикає на нього об’єкт. Повернулась мережа — переводить навантаження назад і глушить двигун.</p>
+      <ul class="ticks"><li>Не треба окремо купувати блок автозапуску</li><li>Підключаємо лише через АВР або перекидний рубильник: пряме підключення до вводу небезпечне для бригад на лінії</li><li>Для GJ-30GF на 30 кВт АВР підбираємо окремо</li></ul>
+    </div>
+    <figure class="schema" role="img" aria-label="Схема: мережа 400 вольт і генератор EDON підключені до АВР; коли напруги в мережі немає, АВР живить ваш об’єкт від генератора">
+      <svg viewBox="0 0 640 330" aria-hidden="true">
+        <defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="#FFB01F"/></marker></defs>
+        <path d="M190 72 H245 V150 H280" fill="none" stroke="rgba(255,255,255,.22)" stroke-width="2" stroke-dasharray="4 6"/>
+        <path d="M230 98 l14 14 M244 98 l-14 14" stroke="#FF7A6E" stroke-width="2.4" stroke-linecap="round"/>
+        <path class="flow" d="M190 258 H245 V180 H276" fill="none" stroke="#FFB01F" stroke-width="2.4" marker-end="url(#ah)"/>
+        <path class="flow" d="M392 165 H466" fill="none" stroke="#FFB01F" stroke-width="2.4" marker-end="url(#ah)"/>
+        <rect x="16" y="40" width="174" height="64" rx="10" fill="#202328" stroke="rgba(255,255,255,.18)"/>
+        <text x="34" y="68" fill="#F2F1EE" font-size="15">Мережа 400 В</text><text x="34" y="90" fill="#FF9C93" font-size="12">напруги немає</text>
+        <rect x="16" y="226" width="174" height="64" rx="10" fill="#202328" stroke="#FFB01F"/>
+        <text x="34" y="254" fill="#F2F1EE" font-size="15">Генератор EDON</text><text x="34" y="276" fill="#FFB01F" font-size="12">запущено</text>
+        <rect x="280" y="131" width="112" height="68" rx="10" fill="#FFB01F"/>
+        <text x="336" y="171" fill="#121315" font-size="18" text-anchor="middle" font-weight="500">АВР</text>
+        <rect x="468" y="131" width="156" height="68" rx="10" fill="#202328" stroke="rgba(255,255,255,.18)"/>
+        <text x="486" y="161" fill="#F2F1EE" font-size="15">Ваш об’єкт</text><text x="486" y="183" fill="#B9BCC1" font-size="12">світло є</text>
+      </svg>
+    </figure>
+  </div>
+</section>`;
+
+const paySection = () => `<section class="section paper-2" id="oplata" aria-labelledby="oplata-h">
+  <div class="wrap">
+    <div class="head"><p class="label">Оплата</p><h2 id="oplata-h">Платіть так, як зручно вашій бухгалтерії</h2><p class="lead">Працюємо з ПДВ, без ПДВ і за готівку. Спосіб оплати обираєте ви, суму в рахунку менеджер підтверджує до оплати.</p></div>
+    <div class="cards cards--3">
+      <div class="card"><span class="pay__tag">З ПДВ</span><h3>Рахунок з ПДВ</h3><p>Для ТОВ, платників ПДВ і бюджетних установ. Повний пакет документів для бухгалтерії.</p></div>
+      <div class="card"><span class="pay__tag">Без ПДВ</span><h3>Рахунок без ПДВ</h3><p>Для ФОП, фермерських господарств і приватних клієнтів. Оплата на рахунок після погодження.</p></div>
+      <div class="card"><span class="pay__tag">Готівка</span><h3>Готівкою при запуску</h3><p>Розраховуєтесь з нашим фахівцем на вашому об’єкті, коли генератор уже запрацював.</p></div>
+    </div>
+  </div>
+</section>`;
+
+const compareSection = () => `<section class="section" id="porivniannia" aria-labelledby="por-h">
+  <div class="wrap">
+    <div class="head"><p class="label">Порівняння</p><h2 id="por-h">Сім моделей в одній таблиці</h2><p class="lead">Ціна вже включає доставку, перший запуск, навчання й гарантію 12 місяців.</p></div>
+    <div class="table-wrap">
+      <table class="cmp">
+        <thead><tr><th scope="col">Модель</th><th scope="col">Потужність</th><th scope="col">Двигун</th><th scope="col">Пальне</th><th scope="col">Вага</th><th scope="col">АВР</th><th scope="col">Ціна</th></tr></thead>
+        <tbody>
+${byPower.map(p => `          <tr><th scope="row"><a href="generatory/${p.slug}/">${esc(p.name)}</a></th><td data-label="Потужність:">${p.kw} кВт / ${p.kva} кВА</td><td data-label="Двигун:">${p.cylinders} цил.</td><td data-label="Пальне:">${esc(p.fuelShort)}</td><td data-label="Вага:">${p.weight} кг</td><td data-label="АВР:">${p.ats ? 'так' : 'окремо'}</td><td data-label="Ціна:">${price(p.price)}</td></tr>`).join('\n')}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>`;
+
+const FAQ = [
+  ['Ви працюєте з ПДВ?', 'Так. Продаємо з ПДВ, без ПДВ і за готівку. Для ТОВ і бюджетних установ готуємо повний пакет документів.'],
+  ['Скільки коштує доставка?', 'Нічого: доставка до вашого об’єкта входить у ціну в будь-яку область на підконтрольній Україні території.'],
+  ['Що підготувати до приїзду генератора?', 'Рівний бетонний майданчик або фундамент, вивід вихлопу назовні й приплив повітря до радіатора. Перелік оливи, антифризу й акумулятора надішлемо після замовлення.'],
+  ['Кожух чи відкрита рама?', 'Кожух знижує шум до 75 дБ у моделі на 100 кВт і закриває машину від дощу. Відкрита рама дешевша на 125 000–230 000 ₴ і підходить для окремого приміщення.'],
+  ['Яка гарантія?', 'Дванадцять місяців на кожен генератор. Гарантійний ремонт, сервіс і запчастини беремо на себе.'],
+  ['Як із вами зв’язатися?', cfg.phone ? `Дзвоніть на ${phoneShown} або пишіть на цей самий номер у Viber, Telegram, WhatsApp чи SMS.${cfg.email ? ` Пошта: ${cfg.email}.` : ''}` : 'Залиште заявку у формі нижче.'],
+];
+const faqSection = () => `<section class="section paper-2" id="pytannia" aria-labelledby="faq-h">
+  <div class="wrap">
+    <div class="head"><p class="label">Питання</p><h2 id="faq-h">Що питають перед покупкою</h2></div>
+    <div class="faq">${FAQ.map(([q, a]) => `<div><h3>${esc(q)}</h3><p>${esc(a)}</p></div>`).join('')}</div>
+  </div>
+</section>`;
+
+const faqLd = { '@type': 'FAQPage', mainEntity: FAQ.map(([q, a]) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: a } })) };
+
+writePage({
+  path: '', onIndex: true,
+  title: `${cfg.name}: дизельні генератори EDON 30–200 кВт з доставкою по Україні`,
+  description: `Сім моделей промислових генераторів EDON на складі, від ${plain(price(minPrice))}. Безкоштовна доставка, запуск на об’єкті й навчання. Оплата з ПДВ, без ПДВ або готівкою.`,
+  main: [hero(), modelsSection(), calcSection(), processSection(), atsSection(), paySection(), compareSection(), faqSection()].join('\n'),
+  ld: { '@graph': [storeLd(), { '@type': 'WebSite', name: cfg.name, inLanguage: 'uk', ...(domain ? { url: `${domain}/` } : {}) }, { '@type': 'ItemList', name: 'Дизельні генератори EDON на складі', itemListElement: byPower.map((p, i) => ({ '@type': 'ListItem', position: i + 1, item: productLd(p) })) }, faqLd] },
+});
+
+// ---------------------------------------------------------------- product pages
+const SIZING = [['Магазин або кафе з холодильними вітринами', 25], ['СТО з підйомниками й компресором', 35], ['Ферма з доїльним залом і вентиляцією', 45], ['Цех на 5–8 верстатів до 7,5 кВт', 60], ['Виробництво з кількома лініями', 110], ['Готель або торговий центр', 140], ['Великий холодильний склад', 180]];
+const verdict = (need, kw) => (need * 1.25 <= kw ? ['v-ok', 'вистачить із запасом'] : need <= kw ? ['v-edge', 'на межі'] : ['v-no', 'замало']);
+const crumbs = (pre, items) => `<nav class="crumbs" aria-label="Навігаційний ланцюжок"><ol><li><a href="${pre}">Головна</a></li>${items.map(([href, t]) => href ? `<li><a href="${href}">${esc(t)}</a></li>` : `<li aria-current="page">${esc(t)}</li>`).join('')}</ol></nav>`;
+
 for (const p of byPower) {
   const path = `generatory/${p.slug}`;
-  const pre = '{{pre}}';
   const others = byPower.filter(o => o.slug !== p.slug).sort((a, b) => Math.abs(a.kw - p.kw) - Math.abs(b.kw - p.kw)).slice(0, 3);
-  const specRows = [
+  const full = [
     ['Номінальна потужність', `${p.kw} кВт / ${p.kva} кВА`], ['Напруга', '400/230 В, три фази'], ['Частота', '50 Гц'], ['Коефіцієнт потужності', 'cos φ 0,8'],
-    ['Двигун', p.engine], ['Запуск', p.ats ? 'електростартер; автоматично через АВР' : 'електростартер 12 В, вручну'],
-    ['АВР', p.ats ? 'у комплекті' : 'підбираємо окремо'], ['Витрата пального', p.fuel],
-    ...(p.insulation ? [['Клас ізоляції обмотки', p.insulation]] : []), ...(p.ip ? [['Ступінь захисту', p.ip]] : []),
-    ['Виконання', bodyName(p)], ...(p.noise ? [['Рівень шуму', p.noise]] : []), ...(p.dims ? [['Габарити', p.dims]] : []),
-    ['Вага', `${p.weight} кг`], ['Гарантія', '12 місяців'], ['Артикул', p.sku],
+    ['Двигун', p.engine], ['Запуск', p.ats ? 'електростартер; автоматично через АВР' : 'електростартер 12 В, вручну'], ['АВР', p.ats ? 'у комплекті' : 'підбираємо окремо'],
+    ['Витрата пального', p.fuel], ...(p.insulation ? [['Клас ізоляції обмотки', p.insulation]] : []), ...(p.ip ? [['Ступінь захисту', p.ip]] : []),
+    ['Виконання', bodyName(p)], ...(p.noise ? [['Рівень шуму', p.noise]] : []), ...(p.dims ? [['Габарити', p.dims]] : []), ['Вага', `${p.weight} кг`], ['Гарантія', '12 місяців'], ['Артикул', p.sku],
   ];
-  const body = `  <section class="section" aria-labelledby="pp-h">
-    <div class="wrap">
-      ${crumbs(pre, [[`${pre}#models`, 'Генератори'], [null, p.name]])}
-      <div class="grid grid--top">
-        <div class="frame pp-frame span-7"><img src="${pre}${img(p)}" alt="${esc(p.alt)}" ${wh(p)} fetchpriority="high" decoding="async" data-source="supplier" data-subject="${esc(p.sku)}"></div>
-        <div class="span-5 stack-4">
-          <h1 id="pp-h" class="t-h2">${esc(p.fullName)}</h1>
-          <p class="pp-price">${price(p.price)}</p>
-          <p class="pp-stock">${stockText(p)}</p>
-          <p>${esc(p.lead)}</p>
-          <ul class="rows rows--spec">
-            <li><span class="rows__name">Потужність</span><span class="rows__value">${p.kw} кВт / ${p.kva} кВА</span></li>
-            <li><span class="rows__name">АВР</span><span class="rows__value">${p.ats ? 'у комплекті' : 'окремо'}</span></li>
-            <li><span class="rows__name">Вага</span><span class="rows__value">${p.weight} кг</span></li>
-          </ul>
-          <div class="btn-row"><a class="btn btn--primary" href="#order">Замовити генератор</a><a class="btn btn--secondary" href="${pre}#specs">Порівняти моделі</a></div>
-        </div>
+  const main = `<section class="pp" aria-labelledby="pp-h">
+  <div class="wrap">
+    ${crumbs('{{pre}}', [['{{pre}}#modeli', 'Генератори'], [null, p.name]])}
+    <div class="pp__grid">
+      <div class="model__pic" style="min-height:460px"><span class="model__kw" aria-hidden="true">${p.kw}</span><span class="model__tag dot-ok">${stockText(p)}</span>${imgTag(p, '{{pre}}', { lazy: false, priority: true })}</div>
+      <div class="model__info pp__buy">
+        <div style="display:grid;gap:10px"><p class="label">EDON · ${esc(bodyName(p))} · ${esc(p.sku)}</p><h1 id="pp-h">${esc(p.fullName)}</h1></div>
+        <p class="price">${price(p.price)}</p>
+        <p>${esc(p.lead)}</p>
+        <div class="mini"><div><b>${p.kw} кВт</b><span>${p.kva} кВА, 400/230 В</span></div><div><b>${p.cylinders} циліндри</b><span>рідинне охолодження</span></div><div><b>${p.weight} кг</b><span>${esc(bodyName(p))}</span></div><div><b>${p.ats ? 'АВР' : 'Без АВР'}</b><span>${p.ats ? 'у комплекті' : 'підбираємо окремо'}</span></div></div>
+        <ul class="incl"><li>Доставка 0 ₴ по Україні</li><li>Запуск на об’єкті</li><li>Навчання персоналу</li><li>Гарантія 12 міс.</li></ul>
+        <div class="btn-row"><a class="btn btn--amber" href="#zamovlennia" data-order="${p.sku}">Замовити генератор</a>${cfg.phone ? `<a class="btn btn--line" href="${telHref}">${icon('phone')}${esc(phoneShown)}</a>` : ''}</div>
+        <p class="muted" style="font-size:15px">Оплата ${payText}. ${cfg.phone ? 'Пишіть на цей номер у Viber, Telegram, WhatsApp або SMS.' : ''}</p>
       </div>
     </div>
-  </section>
-
-  <section class="section" aria-labelledby="inc-h">
-    <div class="wrap">
-      <div class="grid grid--top">
-        <div class="span-5 stack-4">
-          <h2 id="inc-h" class="t-h3">Що входить у ціну</h2>
-          <p>${esc(p.fit)}</p>
-        </div>
-        <ul class="rows span-6 start-7">
-          <li><span class="rows__name">Доставка до вашого об’єкта по Україні</span><span class="rows__value">безкоштовно</span></li>
-          <li><span class="rows__name">Перший запуск фахівцем на місці</span><span class="rows__value">входить</span></li>
-          <li><span class="rows__name">Навчання персоналу</span><span class="rows__value">входить</span></li>
-          <li><span class="rows__name">Гарантія, сервіс і запчастини</span><span class="rows__value">12 місяців</span></li>
-          <li><span class="rows__name">Оплата</span><span class="rows__value">готівкою при запуску або за рахунком</span></li>
-        </ul>
-      </div>
+  </div>
+</section>
+<section class="section paper-2" aria-labelledby="spec-h">
+  <div class="wrap split split--top">
+    <div style="display:grid;gap:16px"><p class="label">Паспорт моделі</p><h2 id="spec-h">Технічні характеристики</h2><p class="lead">${esc(p.fit)}</p></div>
+    <div class="table-wrap" style="padding:8px 28px"><dl class="specs">${full.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl></div>
+  </div>
+</section>
+<section class="section" aria-labelledby="fit-h">
+  <div class="wrap split split--top">
+    <div style="display:grid;gap:16px"><p class="label">Підбір</p><h2 id="fit-h">Які об’єкти закриє ${p.kw}&nbsp;кВт</h2><p class="lead">Орієнтовні піки навантаження із запасом 25%. Точну потужність рахуємо безкоштовно за переліком вашого обладнання.</p><p><a class="link" href="{{pre}}#pidbir">Калькулятор потужності</a></p></div>
+    <div class="table-wrap verdicts" style="padding:8px 28px"><dl class="specs">${SIZING.map(([t, k]) => { const [c, v] = verdict(k, p.kw); return `<div><dt>${esc(t)}, ≈ ${k} кВт</dt><dd class="${c}">${v}</dd></div>`; }).join('')}</dl></div>
+  </div>
+</section>
+<section class="section paper-2" aria-labelledby="prep-h">
+  <div class="wrap">
+    <div class="head"><p class="label">Перед запуском</p><h2 id="prep-h">Що підготувати на об’єкті</h2><p class="lead">Генератор важить ${p.weight} кг. Розвантаження навантажувачем або маніпулятором узгоджуємо заздалегідь.</p></div>
+    <ol class="cards cards--4">
+      <li class="card"><span class="card__num">01</span><h3>Майданчик</h3><p>Рівний бетон або фундамент: машина вібрує, на ґрунт чи асфальт її не ставлять.</p></li>
+      <li class="card"><span class="card__num">02</span><h3>Вихлоп і повітря</h3><p>Вивід вихлопу назовні й приплив до радіатора, інакше він перегріється навіть узимку.</p></li>
+      <li class="card"><span class="card__num">03</span><h3>Підключення</h3><p>Через АВР або перекидний рубильник. Пряме підключення до вводу небезпечне.</p></li>
+      <li class="card"><span class="card__num">04</span><h3>Рідини й АКБ</h3><p>Олива, антифриз і акумулятор: перелік надішлемо. Обкатка — 50 мотогодин.</p></li>
+    </ol>
+  </div>
+</section>
+<section class="section" aria-labelledby="more-h">
+  <div class="wrap">
+    <div class="head head--row"><h2 id="more-h">Інші моделі EDON</h2><a class="link" href="{{pre}}#porivniannia">Порівняти всі</a></div>
+    <div class="cards cards--3">
+      ${others.map(o => `<a class="card" href="{{pre}}generatory/${o.slug}/"><div class="model__pic" style="min-height:220px;padding:20px;border:0;background:var(--paper)">${imgTag(o, '{{pre}}', { sizes: '(max-width: 1023px) 92vw, 380px' })}</div><h3>${esc(o.name)}</h3><p class="mono">${price(o.price)} · ${stockText(o).toLowerCase()}</p></a>`).join('\n      ')}
     </div>
-  </section>
-
-  <section class="section" aria-labelledby="spec-h">
-    <div class="wrap">
-      <div class="grid grid--top">
-        <div class="span-5 stack-4">
-          <h2 id="spec-h" class="t-h3">Технічні характеристики</h2>
-          <p>Дані виробника для цієї партії. Перед оплатою менеджер звіряє комплектацію з вашим об’єктом.</p>
-        </div>
-        <ul class="rows rows--spec span-6 start-7">
-          ${specRows.map(([k, v]) => `<li><span class="rows__name">${esc(k)}</span><span class="rows__value">${esc(v)}</span></li>`).join('\n          ')}
-        </ul>
-      </div>
-    </div>
-  </section>
-
-  <section class="section" aria-labelledby="fit-h">
-    <div class="wrap">
-      <div class="grid grid--top">
-        <div class="span-5 stack-4">
-          <h2 id="fit-h" class="t-h3">Які об’єкти закриє ${p.kw} кВт</h2>
-          <p>Орієнтовні піки навантаження. Точну потужність рахуємо за переліком вашого обладнання з урахуванням пускових струмів, безкоштовно.</p>
-        </div>
-        <ul class="rows span-6 start-7">
-          ${SIZING.map(([t, kw]) => `<li><span class="rows__name">${esc(t)}, ≈ ${kw} кВт</span><span class="rows__value verdict">${verdict(kw, p.kw)}</span></li>`).join('\n          ')}
-        </ul>
-      </div>
-    </div>
-  </section>
-
-  <section class="section" aria-labelledby="prep-h">
-    <div class="wrap">
-      <div class="grid grid--top">
-        <div class="span-5 stack-4">
-          <h2 id="prep-h" class="t-h3">Що підготувати до запуску</h2>
-          <p>Генератор важить ${p.weight} кг. Розвантаження навантажувачем або маніпулятором узгоджуємо заздалегідь.</p>
-        </div>
-        <ul class="rows span-6 start-7">
-          <li><span class="rows__name">Рівний бетонний майданчик або фундамент</span><p>Машина вібрує, на ґрунт чи асфальт її не ставлять.</p></li>
-          <li><span class="rows__name">Вивід вихлопу назовні й приплив повітря</span><p>Без припливу радіатор перегріється навіть узимку.</p></li>
-          <li><span class="rows__name">Підключення через АВР або перекидний рубильник</span><p>Пряме підключення до вводу небезпечне для бригад, що ремонтують лінію.</p></li>
-          <li><span class="rows__name">Олива, антифриз і акумулятор</span><p>Перелік надішлемо після замовлення. Обкатка — 50 мотогодин на навантаженні 50–70%.</p></li>
-        </ul>
-      </div>
-    </div>
-  </section>
-
-  <section class="section" aria-labelledby="more-h">
-    <div class="wrap">
-      <h2 id="more-h" class="t-h3">Інші моделі EDON</h2>
-      <div class="grid" style="margin-top: var(--s-6)">
-${others.map(o => tile(o, pre)).join('\n')}
-      </div>
-    </div>
-  </section>
-
-  <section class="section" id="order" aria-labelledby="order-h">
-    <div class="wrap">
-      <div class="grid grid--top">
-        <div class="span-5 stack-4">
-          <h2 id="order-h" class="t-h3">Замовлення ${esc(p.name)}</h2>
-          <p>Залиште номер телефону. Менеджер передзвонить, уточнить об’єкт і дату доставки. Оплата лише після погодження.</p>
-${orderContacts()}
-        </div>
-        <div class="order-card span-6 start-7">
-${orderForm(p.slug)}
-        </div>
-      </div>
-    </div>
-  </section>`;
-  page({
-    path,
-    title: `${p.fullName} — ціна ${price(p.price).replace(/ /g, ' ')} | ${cfg.name}`,
-    description: `EDON ${p.kw} кВт (${p.kva} кВА), ${bodyName(p)}${p.ats ? ', АВР у комплекті' : ''}. ${stockText(p)}. Безкоштовна доставка по Україні, запуск на об’єкті й навчання.`,
-    body,
-    ld: { '@graph': [productLd(p), breadcrumbLd([['', 'Головна'], ['#models', 'Генератори'], [`${path}/`, p.name]])] },
-    ogImage: `assets/img/products/${p.image}.jpg`,
-    hasOrder: true,
+  </div>
+</section>`;
+  writePage({
+    path, selected: p.slug, ogType: 'product', ogImage: `assets/img/products/${p.image}.jpg`,
+    title: `${p.fullName} — ціна ${plain(price(p.price))} | ${cfg.name}`,
+    description: `EDON ${p.kw} кВт (${p.kva} кВА), ${bodyName(p)}${p.ats ? ', АВР у комплекті' : ''}. ${stockText(p)}. Безкоштовна доставка по Україні, запуск і навчання. Оплата з ПДВ, без ПДВ або готівкою.`,
+    main,
+    ld: { '@graph': [productLd(p), breadcrumbLd([['', 'Головна'], ['#modeli', 'Генератори'], [`${path}/`, p.name]])] },
   });
 }
 
-// buyer pages: one prose block each
-const seller = () => {
-  const bits = [];
-  if (cfg.legalName) bits.push(esc(cfg.legalName));
-  if (cfg.legalCode) bits.push(`код ${esc(cfg.legalCode)}`);
-  if (cfg.legalAddress) bits.push(esc(cfg.legalAddress));
-  return bits.length ? `<p><strong>Продавець:</strong> ${bits.join(', ')}.</p>` : '';
-};
-const contactsProse = () => {
-  const l = [];
-  if (cfg.phone) l.push(`<li>Телефон: <a href="${telHref()}">${esc(cfg.phoneDisplay || cfg.phone)}</a></li>`);
-  if (cfg.email) l.push(`<li>Ел. пошта: <a href="mailto:${esc(cfg.email)}">${esc(cfg.email)}</a></li>`);
-  if (cfg.viber) l.push(`<li><a href="${esc(cfg.viber)}">Viber</a></li>`);
-  if (cfg.telegram) l.push(`<li><a href="${esc(cfg.telegram)}">Telegram</a></li>`);
-  if (cfg.street || cfg.city) l.push(`<li>Адреса: ${esc([cfg.street, cfg.city].filter(Boolean).join(', '))}</li>`);
-  if (cfg.hours) l.push(`<li>Графік: ${esc(cfg.hours)}</li>`);
-  l.push(`<li>Заявка на сайті: <a href="{{pre}}#order">форма замовлення</a></li>`);
-  return `<ul>${l.join('')}</ul>`;
-};
-const prosePage = (path, h1, title, description, html) => page({
+// ---------------------------------------------------------------- buyer pages
+const seller = () => cfg.legalName ? `<p><strong>Продавець:</strong> ${esc(cfg.legalName)}${cfg.legalCode ? `, РНОКПП ${esc(cfg.legalCode)}` : ''}${cfg.legalAddress ? `, ${esc(cfg.legalAddress)}` : ''}.</p>` : '';
+const contactsProse = () => `<ul>
+          ${cfg.phone ? `<li>Телефон: <a href="${telHref}">${esc(phoneShown)}</a> — дзвінки, Viber, Telegram, WhatsApp, SMS</li>` : ''}
+          ${cfg.email ? `<li>Ел. пошта: <a href="mailto:${esc(cfg.email)}">${esc(cfg.email)}</a></li>` : ''}
+          ${cfg.city ? `<li>Магазин: ${esc([cfg.street, cfg.city].filter(Boolean).join(', '))}</li>` : ''}
+          ${cfg.hours ? `<li>Графік: ${esc(cfg.hours)}</li>` : ''}
+        </ul>`;
+const prosePage = (path, h1, title, description, html) => writePage({
   path, title: `${title} | ${cfg.name}`, description,
-  body: `  <section class="section">
-    <div class="wrap">
-      ${crumbs('{{pre}}', [[null, h1]])}
-      <div class="prose">
-        <h1 class="t-h2">${esc(h1)}</h1>
-${html}
-      </div>
-    </div>
-  </section>`,
+  main: `<section class="pp"><div class="wrap">${crumbs('{{pre}}', [[null, h1]])}<div class="prose" style="margin-top:32px"><h1>${esc(h1)}</h1>${html}</div></div></section>`,
   ld: { '@graph': [breadcrumbLd([['', 'Головна'], [`${path}/`, h1]])] },
 });
 
-prosePage('dostavka-i-oplata', 'Доставка й оплата', 'Доставка й оплата генераторів', 'Безкоштовна доставка генераторів EDON по Україні, перший запуск на об’єкті та способи оплати: готівкою при запуску або за рахунком.', `
+prosePage('dostavka-i-oplata', 'Доставка й оплата', 'Доставка й оплата генераторів', 'Безкоштовна доставка генераторів EDON по Україні, перший запуск на об’єкті, оплата з ПДВ, без ПДВ або готівкою.', `
         <h2>Доставка</h2>
-        <p>Доставка будь-якого генератора з каталогу безкоштовна. Ми привозимо його вантажним транспортом до вашого об’єкта на підконтрольній Україні території. Дату й час узгоджує менеджер після замовлення: строк залежить від області та моделі.</p>
-        <p>Генератори важать від 500 до 1650 кг. Для розвантаження на об’єкті потрібен навантажувач або маніпулятор; заздалегідь узгодьте під’їзд до місця встановлення. Якщо техніки для розвантаження немає, підкажемо, як її знайти.</p>
+        <p>Доставка будь-якого генератора з каталогу безкоштовна. Привозимо його вантажним транспортом до вашого об’єкта на підконтрольній Україні території. Дату й час узгоджує менеджер після замовлення: строк залежить від області та моделі.</p>
+        <p>Генератори важать від 500 до 1650 кг. Для розвантаження на об’єкті потрібен навантажувач або маніпулятор; заздалегідь узгодьте під’їзд до місця встановлення.</p>
         <h2>Перший запуск і навчання</h2>
-        <p>Після доставки наш фахівець перевіряє майданчик, вихлоп, вентиляцію та схему підключення, запускає генератор і дає йому навантаження. Потім показує вашому персоналу, як запускати й зупиняти станцію, проходити обкатку (50 мотогодин на навантаженні 50–70%) і щомісяця перевіряти її під навантаженням. Запуск і навчання входять у ціну.</p>
-        <p>До запуску підготуйте рівний бетонний майданчик або фундамент, вивід вихлопу назовні, приплив повітря до радіатора та підключення через АВР або перекидний рубильник. Перелік оливи, антифризу й акумулятора надсилаємо після замовлення.</p>
+        <p>Після доставки наш фахівець перевіряє майданчик, вихлоп, вентиляцію та схему підключення, запускає генератор і дає йому навантаження. Потім показує персоналу, як запускати й зупиняти станцію, проходити обкатку (50 мотогодин на навантаженні 50–70%) і щомісяця перевіряти її під навантаженням. Запуск і навчання входять у ціну.</p>
         <h2>Оплата</h2>
         <ul>
-          <li>Готівкою нашому фахівцю під час запуску на об’єкті.</li>
-          <li>Безготівково за рахунком: для ФОП, ТОВ і бюджетних установ готуємо видаткову накладну та інші документи.</li>
+          <li><strong>З ПДВ</strong> — безготівково за рахунком, з повним пакетом документів для ТОВ, платників ПДВ і бюджетних установ.</li>
+          <li><strong>Без ПДВ</strong> — безготівково за рахунком для ФОП, фермерських господарств і приватних клієнтів.</li>
+          <li><strong>Готівкою</strong> — нашому фахівцю під час запуску на вашому об’єкті.</li>
         </ul>
-        <p>Ціни на сайті вказані в гривнях і вже включають доставку, перший запуск, навчання й гарантію 12 місяців. Остаточну суму менеджер підтверджує до оплати.</p>
+        <p>Ціни на сайті вказані в гривнях і вже включають доставку, перший запуск, навчання й гарантію 12 місяців. Суму в рахунку для обраного способу оплати менеджер підтверджує до оплати.</p>
         ${seller()}`);
 
-prosePage('harantiia-ta-povernennia', 'Гарантія й повернення', 'Гарантія та повернення', 'Гарантія 12 місяців на генератори EDON, умови гарантійного ремонту, обміну та повернення товару.', `
+prosePage('harantiia-ta-povernennia', 'Гарантія й повернення', 'Гарантія та повернення', 'Гарантія 12 місяців на генератори EDON, умови гарантійного ремонту, обміну та повернення.', `
         <h2>Гарантія 12 місяців</h2>
         <p>На кожен генератор діє гарантія 12 місяців від дати першого запуску на вашому об’єкті. Протягом цього строку ми безкоштовно усуваємо заводські дефекти: ремонтуємо або замінюємо несправні вузли.</p>
         <p>Гарантія зберігається, якщо генератор встановлено й підключено за вимогами (майданчик, вихлоп, вентиляція, АВР або перекидний рубильник), обкатку й технічне обслуговування проведено за регламентом, а в станцію заливали рекомендовані оливу, антифриз і пальне.</p>
         <p>Гарантія не покриває витратні матеріали (фільтри, оливу, антифриз, акумулятор), пошкодження від неправильного підключення, перевантаження, стихійних лих, механічних ушкоджень і втручання сторонніх осіб.</p>
         <h2>Як звернутися за гарантією</h2>
-        <p>Повідомте нам модель, артикул, дату запуску й опис несправності, додайте фото або відео. Ми узгодимо діагностику на місці або доставку вузла в сервіс.</p>
+        <p>Повідомте модель, артикул, дату запуску й опис несправності, додайте фото або відео. Ми узгодимо діагностику на місці або доставку вузла в сервіс.</p>
         ${contactsProse()}
         <h2>Обмін і повернення</h2>
         <p>Обмін і повернення товару належної якості для споживачів здійснюються відповідно до Закону України «Про захист прав споживачів» протягом 14 днів, якщо генератор не був у використанні та збережено його товарний вигляд і комплектність. Якщо генератор має недолік, ви маєте права, передбачені статтею 8 цього Закону: ремонт, заміна, зменшення ціни або повернення коштів.</p>
@@ -546,11 +579,11 @@ prosePage('oferta', 'Публічна оферта', 'Публічна офер�
         <p>Цей документ — пропозиція укласти договір купівлі-продажу генераторів, представлених на сайті, на умовах нижче. Оформлюючи замовлення, покупець погоджується з цими умовами.</p>
         ${seller()}
         <h2>1. Предмет</h2>
-        <p>Продавець передає у власність покупця генератор, обраний на сайті або погоджений з менеджером, а покупець приймає та оплачує його. Продавець не є виробником генераторів EDON і продає їх як дилер.</p>
+        <p>Продавець передає у власність покупця генератор, обраний на сайті або погоджений з менеджером, а покупець приймає та оплачує його. Продавець продає генератори EDON як дилер і не є їх виробником.</p>
         <h2>2. Замовлення</h2>
-        <p>Замовлення оформлюється через форму на сайті або телефоном. Менеджер підтверджує модель, ціну, адресу та дату доставки. Договір вважається укладеним з моменту такого підтвердження.</p>
+        <p>Замовлення оформлюється через форму на сайті, телефоном або в месенджері. Менеджер підтверджує модель, ціну, спосіб оплати, адресу та дату доставки. Договір вважається укладеним з моменту такого підтвердження.</p>
         <h2>3. Ціна й оплата</h2>
-        <p>Ціни вказано в гривнях; вони включають доставку по Україні, перший запуск, навчання персоналу та гарантію 12 місяців. Оплата готівкою під час запуску або безготівково за рахунком. Ціна, підтверджена менеджером, не змінюється після підтвердження замовлення.</p>
+        <p>Ціни вказано в гривнях; вони включають доставку по Україні, перший запуск, навчання персоналу та гарантію 12 місяців. Оплата безготівкова з ПДВ, безготівкова без ПДВ або готівкою під час запуску. Сума, підтверджена менеджером, не змінюється після підтвердження замовлення.</p>
         <h2>4. Доставка й приймання</h2>
         <p>Продавець доставляє генератор до об’єкта покупця на підконтрольній Україні території. Покупець забезпечує під’їзд і техніку для розвантаження. Під час приймання покупець перевіряє комплектність і відсутність механічних пошкоджень.</p>
         <h2>5. Гарантія, обмін і повернення</h2>
@@ -565,7 +598,8 @@ prosePage('konfidentsiinist', 'Політика конфіденційності
         ${seller()}
         <h2>Які дані ми отримуємо</h2>
         <ul>
-          <li>З форми замовлення: ім’я, номер телефону, населений пункт, обрана модель і ваш коментар.</li>
+          <li>З форми замовлення: ім’я, номер телефону, населений пункт, обрані модель і спосіб оплати, ваш коментар.</li>
+          <li>З месенджерів і пошти: те, що ви самі нам напишете.</li>
           <li>Технічні дані: IP-адреса, тип пристрою й браузера, сторінки, з яких ви прийшли, а також файли cookie, якщо на сайті ввімкнено Google Analytics або Google Ads.</li>
         </ul>
         <h2>Навіщо</h2>
@@ -574,44 +608,39 @@ prosePage('konfidentsiinist', 'Політика конфіденційності
           <li>Щоб вимірювати ефективність реклами та покращувати сайт (знеособлена статистика).</li>
         </ul>
         <h2>Кому ми передаємо дані</h2>
-        <p>Ми не продаємо персональні дані. Дані з форми надходять до нас через сервіс обробки форм, а статистика відвідувань — до Google (Google Analytics, Google Ads), якщо ці сервіси ввімкнені. Перевізнику ми передаємо лише ім’я, телефон і адресу доставки.</p>
+        <p>Ми не продаємо персональні дані. Дані з форми надходять до нас через сервіс обробки форм або електронну пошту, статистика відвідувань — до Google (Google Analytics, Google Ads), якщо ці сервіси ввімкнені. Перевізнику ми передаємо лише ім’я, телефон і адресу доставки.</p>
         <h2>Скільки зберігаємо</h2>
         <p>Дані заявок зберігаємо до 3 років після останнього контакту або довше, якщо цього вимагає законодавство (бухгалтерські та гарантійні документи).</p>
         <h2>Ваші права</h2>
         <p>Ви можете дізнатися, які дані ми маємо, виправити їх або вимагати видалення, написавши чи зателефонувавши нам. Файли cookie можна видалити або заборонити в налаштуваннях браузера; персоналізацію реклами Google вимикають на сторінці adssettings.google.com.</p>
         ${contactsProse()}`);
 
-prosePage('kontakty', 'Контакти', 'Контакти', `Як зв’язатися з ${cfg.name}: замовлення генераторів EDON, доставка, запуск і гарантія.`, `
+prosePage('kontakty', 'Контакти й реквізити', 'Контакти', `Як зв’язатися з ${cfg.name}: телефон і месенджери, пошта, адреса магазину, реквізити продавця.`, `
         <p>${esc(cfg.name)} продає промислові дизельні генератори EDON на 30–200 кВт, безкоштовно довозить їх по Україні, запускає на об’єкті й навчає персонал. Ми дилер і не є виробником EDON.</p>
+        <h2>Зв’язок</h2>
         ${contactsProse()}
-        ${seller()}`);
+        <h2>Реквізити</h2>
+        ${seller() || '<p>Реквізити надає менеджер під час оформлення замовлення.</p>'}`);
 
 prosePage('credits', 'Джерела фотографій', 'Джерела фотографій', 'Ліцензії фотографій, використаних на сайті.', `
-        <p>Фотографії генераторів EDON надав постачальник. Фото на першому екрані та в розділі доставки — з Wikimedia Commons за вільними ліцензіями:</p>
+        <p>Фотографії генераторів EDON надав постачальник. Фото в розділі доставки — з Wikimedia Commons за вільною ліцензією:</p>
         <ul>
-          <li>«Paranal generators (paranal-generator-set)», ESO, <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>, <a href="https://commons.wikimedia.org/wiki/File:Paranal_generators_(paranal-generator-set).jpg">джерело</a>.</li>
           <li>«Blue Grass Chemical Agent-Destruction Pilot Plant Standby Diesel Generator», PEO ACWA, <a href="https://creativecommons.org/licenses/by/2.0/">CC BY 2.0</a>, кадровано, <a href="https://commons.wikimedia.org/wiki/File:Blue_Grass_Chemical_Agent-Destruction_Pilot_Plant_Standby_Diesel_Generator_(12119019006).jpg">джерело</a>.</li>
-        </ul>`);
+        </ul>
+        <p>Іконки Viber, Telegram і WhatsApp — Simple Icons (CC0); назви й знаки належать їх власникам.</p>`);
 
 // 404
-page({ path: '404-page', title: `Сторінку не знайдено | ${cfg.name}`, description: 'Такої сторінки немає. Перейдіть до каталогу генераторів EDON.', robots: 'noindex, follow', body: `  <section class="section">
-    <div class="wrap">
-      <div class="prose">
-        <h1 class="t-h2">Такої сторінки немає</h1>
-        <p>Можливо, модель перейменовано. Усі генератори з цінами — у каталозі.</p>
-        <p><a class="btn btn--secondary" href="/#models">Переглянути генератори</a></p>
-      </div>
-    </div>
-  </section>` });
+writePage({ path: '404-page', contact: false, robots: 'noindex, follow', title: `Сторінку не знайдено | ${cfg.name}`, description: 'Такої сторінки немає. Перейдіть до каталогу генераторів EDON.',
+  main: `<section class="pp"><div class="wrap prose" style="padding-block:64px"><h1>Такої сторінки немає</h1><p>Можливо, модель перейменовано. Усі генератори з цінами — у каталозі.</p><p style="margin-top:24px"><a class="btn btn--amber" href="/#modeli">Переглянути генератори</a></p></div></section>` });
 {
   const f = join(SITE, '404-page/index.html');
-  const html = readFileSync(f, 'utf8').replaceAll('href="../', 'href="/').replaceAll('src="../', 'src="/');
-  writeFileSync(join(SITE, '404.html'), html);
+  writeFileSync(join(SITE, '404.html'), readFileSync(f, 'utf8').replaceAll('href="../', 'href="/').replaceAll('src="../', 'src="/'));
 }
 
-// robots, sitemap, merchant feed, llms.txt
+// ---------------------------------------------------------------- robots, sitemap, feed, llms.txt
 const pages = ['', ...byPower.map(p => `generatory/${p.slug}/`), 'dostavka-i-oplata/', 'harantiia-ta-povernennia/', 'oferta/', 'konfidentsiinist/', 'kontakty/'];
 writeFileSync(join(SITE, 'robots.txt'), `User-agent: *\nAllow: /\nDisallow: /404-page/\n\nUser-agent: AdsBot-Google\nAllow: /\n\nUser-agent: AdsBot-Google-Mobile\nAllow: /\n${domain ? `\nSitemap: ${domain}/sitemap.xml\n` : ''}`);
+for (const f of ['sitemap.xml', 'merchant-feed.xml']) if (!domain && existsSync(join(SITE, f))) rmSync(join(SITE, f));
 if (domain) {
   writeFileSync(join(SITE, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${pages.map(u => `  <url><loc>${domain}/${u}</loc><lastmod>${TODAY}</lastmod></url>`).join('\n')}\n</urlset>\n`);
   const x = s => esc(s).replace(/'/g, '&apos;');
@@ -624,7 +653,7 @@ if (domain) {
 ${byPower.map(p => `<item>
   <g:id>${x(p.sku)}</g:id>
   <g:title>${x(p.fullName)}</g:title>
-  <g:description>${x(`${p.lead} ${p.fit} Безкоштовна доставка по Україні, запуск на об’єкті, навчання персоналу, гарантія 12 місяців.`)}</g:description>
+  <g:description>${x(`${p.lead} ${p.fit} Безкоштовна доставка по Україні, запуск на об’єкті, навчання персоналу, гарантія 12 місяців. Оплата з ПДВ, без ПДВ або готівкою.`)}</g:description>
   <g:link>${domain}/generatory/${p.slug}/</g:link>
   <g:image_link>${domain}/assets/img/products/${p.image}.jpg</g:image_link>
   <g:condition>new</g:condition>
@@ -642,30 +671,26 @@ ${byPower.map(p => `<item>
 </rss>
 `);
 }
+const u = p => (domain ? `${domain}/${p}` : p);
 writeFileSync(join(SITE, 'llms.txt'), `# ${cfg.name}
 
-> Продаж промислових дизельних генераторів EDON на 30–200 кВт в Україні. Безкоштовна доставка до об’єкта, перший запуск фахівцем на місці, навчання персоналу, гарантія 12 місяців. Оплата готівкою при запуску або за рахунком.
+> Продаж промислових дизельних генераторів EDON на 30–200 кВт в Україні. Безкоштовна доставка до об’єкта, перший запуск фахівцем на місці, навчання персоналу, гарантія 12 місяців. Оплата з ПДВ, без ПДВ або готівкою.${cfg.phone ? ` Телефон і месенджери (Viber, Telegram, WhatsApp, SMS): ${phoneShown}.` : ''}${cfg.email ? ` Пошта: ${cfg.email}.` : ''}${cfg.city ? ` Магазин: ${[cfg.street, cfg.city].filter(Boolean).join(', ')}.` : ''}
 
 ## Генератори
-${byPower.map(p => `- [${p.fullName}](${domain ? domain + '/' : ''}generatory/${p.slug}/): ${p.kw} кВт / ${p.kva} кВА, ${bodyName(p)}, ${p.ats ? 'АВР у комплекті' : 'без АВР'}, ${p.weight} кг, ${price(p.price).replace(/ /g, ' ')}, ${stockText(p).toLowerCase()}`).join('\n')}
+${byPower.map(p => `- [${p.fullName}](${u(`generatory/${p.slug}/`)}): ${p.kw} кВт / ${p.kva} кВА, ${bodyName(p)}, ${p.ats ? 'АВР у комплекті' : 'без АВР'}, ${p.weight} кг, ${plain(price(p.price))}, ${stockText(p).toLowerCase()}`).join('\n')}
 
 ## Покупцям
-- [Доставка й оплата](${domain ? domain + '/' : ''}dostavka-i-oplata/)
-- [Гарантія й повернення](${domain ? domain + '/' : ''}harantiia-ta-povernennia/)
-- [Публічна оферта](${domain ? domain + '/' : ''}oferta/)
-- [Контакти](${domain ? domain + '/' : ''}kontakty/)
+- [Доставка й оплата](${u('dostavka-i-oplata/')})
+- [Гарантія й повернення](${u('harantiia-ta-povernennia/')})
+- [Публічна оферта](${u('oferta/')})
+- [Контакти й реквізити](${u('kontakty/')})
 `);
 
-// what is still missing for Google Ads (misrepresentation and destination policies)
 const need = [
   ['domain', 'домен сайту (canonical, sitemap.xml, фід Merchant Center)'],
-  ['phone', 'телефон (Google вимагає реальні контакти бізнесу)'],
-  ['email', 'ел. пошта'],
-  ['city', 'місто / адреса'],
-  ['legalName', 'юридична назва продавця (ФОП або ТОВ)'],
-  ['legalCode', 'ЄДРПОУ або РНОКПП продавця'],
-  ['formEndpoint', 'адреса сервісу форм (Formspree, Web3Forms...): без неї заявки не надходять'],
+  ['phone', 'телефон'], ['email', 'ел. пошта'], ['legalName', 'юридична назва продавця'],
+  ['formEndpoint', 'адреса сервісу форм (Formspree, Web3Forms...): без неї форма відкриває пошту відвідувача з готовим листом'],
   ['googleAdsId', 'ідентифікатор Google Ads (AW-...) для конверсій'],
 ].filter(([k]) => !cfg[k]);
 console.log(`build: index + ${byPower.length} product pages + 6 buyer pages + 404, robots.txt, llms.txt${domain ? ', sitemap.xml, merchant-feed.xml' : ''}`);
-if (need.length) console.log(`site.json is missing (left off the pages):\n${need.map(([k, t]) => `  - ${k}: ${t}`).join('\n')}`);
+if (need.length) console.log(`site.json is missing:\n${need.map(([k, t]) => `  - ${k}: ${t}`).join('\n')}`);

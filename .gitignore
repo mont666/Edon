@@ -1,7 +1,5 @@
-# design-check working files (screenshots, browser profiles)
-site/shots/
-site/.taste-skill/chrome-*/
-site/.taste-skill/consistency/
-site/.taste-skill/gate/
 node_modules/
 .DS_Store
+__pycache__/
+*.pyc
+site/shots/

@@ -1,9 +1,0 @@
-{
-  "name": "Резерв 400",
-  "why": "400 В — трифазна напруга всіх моделей; «резерв» — те, для чого купують станцію",
-  "searches": [
-    {"query": "\"Резерв 400\" генератори", "result": "No business of that name in the results: 400 kW listings and news about a national generator reserve"},
-    {"query": "\"Струмлад\" генератори", "result": "No business of that name (rejected as the second option)"}
-  ],
-  "searched": true
-}
