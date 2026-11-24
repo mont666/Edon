@@ -1,4 +1,4 @@
-# Резерв 400 — design system
+# Дизель Резерв — design system
 
 **Idea: the product datasheet.** An industrial dealer sells a machine people pay 320 000–1 239 000 ₴ for.
 The page reads like the nameplate and spec sheet of that machine: dark graphite like a generator room,

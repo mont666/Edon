@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Builds the Резерв 400 site from data/products.json and data/site.json into site/.
+// Builds the Дизель Резерв site from data/products.json and data/site.json into site/.
 //   node tools/build.mjs
 // Every page (home, a page per generator, buyer pages, 404) comes from the templates below, so the header,
 // footer, contacts and order form are the same everywhere. Also writes robots.txt and llms.txt, and once
@@ -104,7 +104,7 @@ const headerHtml = (pre, onIndex) => {
   return `<a class="skip" href="#main">Перейти до змісту</a>
 <header class="site-header">
   <div class="wrap">
-    <a class="logo" href="${onIndex ? '#main' : pre || './'}"><span class="logo__mark" aria-hidden="true">Р4</span><span>${esc(cfg.name)}<small>дилер EDON</small></span></a>
+    <a class="logo" href="${onIndex ? '#main' : pre || './'}"><span class="logo__mark" aria-hidden="true">ДР</span><span>${esc(cfg.name)}<small>дилер EDON</small></span></a>
     <nav class="nav" aria-label="Головне меню">${NAV.slice(0, 5).map(([id, t]) => `<a href="${a(id)}">${t}</a>`).join('')}</nav>
     <div class="head-actions">
       ${cfg.phone ? `<a class="head-phone" href="${telHref}">${esc(phoneShown)}<small>${esc(cfg.hours || 'дзвінки й месенджери')}</small></a>` : ''}
@@ -124,7 +124,7 @@ const footerHtml = pre => `<footer class="site-footer">
   <div class="wrap">
     <div class="grid">
       <div class="foot-brand">
-        <a class="logo" href="${pre || './'}"><span class="logo__mark" aria-hidden="true">Р4</span><span>${esc(cfg.name)}<small>дилер EDON</small></span></a>
+        <a class="logo" href="${pre || './'}"><span class="logo__mark" aria-hidden="true">ДР</span><span>${esc(cfg.name)}<small>дилер EDON</small></span></a>
         <p>Продаж, доставка й запуск промислових дизельних генераторів EDON 30–200 кВт по всій Україні.</p>
       </div>
       <div><h3>Моделі</h3><ul>${byPower.map(p => `<li><a href="${pre}generatory/${p.slug}/">${esc(p.name)}</a></li>`).join('')}</ul></div>

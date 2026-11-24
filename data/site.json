@@ -1,7 +1,7 @@
 {
   "_readme": "Дані бізнесу. Порожнє поле = рядок не показується на сайті. Після зміни запустіть: node tools/build.mjs",
-  "name": "Резерв 400",
-  "domain": "",
+  "name": "Дизель Резерв",
+  "domain": "https://dizel-rezerv.com",
   "phone": "+380967961454",
   "phoneDisplay": "096 796-14-54",
   "messengers": [
