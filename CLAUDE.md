@@ -30,7 +30,7 @@ Claude Code session opened in this repo. Script paths inside skills are relative
   behaviour (menu, model switch, power calculator, order form, Google Ads conversions) in `site/assets/app.js`.
 - Google Ads rules for this site: no unverifiable claims (cheapest, counters, fake reviews, "official
   dealer"), prices and stock must match the data, the seller identity comes from `site.json`, we are a
-  dealer not the maker. Payment is offered with VAT, without VAT or in cash.
+  dealer not the maker. Payment: bank transfer without VAT, or cash. No VAT invoices.
 - Check changes in a real browser at 1440 and 390 px: no console errors, no sideways scroll, the model
   switch and calculator work, contrast passes.
 

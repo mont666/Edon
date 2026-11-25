@@ -35,5 +35,5 @@ scroll; everything rests under `prefers-reduced-motion`.
 ## Copy rules (Google Ads)
 
 Only facts from `data/`: prices, stock, delivery 0 ₴, first start and training on site, 12-month
-warranty, payment with VAT, without VAT or cash. No "cheapest", no counters, no invented reviews.
+warranty, payment by bank transfer without VAT or cash (no VAT invoices). No "cheapest", no counters, no invented reviews.
 We are a dealer of EDON, not the maker.
