@@ -8,6 +8,7 @@
 
 import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -16,6 +17,9 @@ const products = JSON.parse(readFileSync(join(ROOT, 'data/products.json'), 'utf8
 const cfg = JSON.parse(readFileSync(join(ROOT, 'data/site.json'), 'utf8'));
 const ICONS = JSON.parse(readFileSync(join(ROOT, 'tools/icon-paths.json'), 'utf8'));
 const YEAR = new Date().getFullYear();
+// cache-busting: the CDN and browsers keep assets for a week, so each asset URL carries a hash of its content
+const ver = f => createHash('sha1').update(readFileSync(join(SITE, f))).digest('hex').slice(0, 10);
+const CSS_V = ver('assets/app.css'), JS_V = ver('assets/app.js');
 const TODAY = new Date().toISOString().slice(0, 10);
 const domain = (cfg.domain || '').replace(/\/+$/, '');
 const abs = p => (domain ? `${domain}/${p}` : '');
@@ -52,6 +56,15 @@ const icon = (name, cls = '') => {
     arrow: '<path d="M5 12h13M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
     menu: '<path d="M4 7h16M4 17h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
     pin: '<path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="9.5" r="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/>',
+    truck: '<path d="M2 6h11v10H2zM13 9h4l4 4v3h-8z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="6" cy="17.5" r="1.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="17" cy="17.5" r="1.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+    power: '<path d="M12 3v8M7 6.3a7 7 0 1 0 10 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+    users: '<circle cx="9" cy="8" r="3.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 20a6 6 0 0 1 12 0M16 5.2a3 3 0 0 1 0 5.6M18 14.5a5 5 0 0 1 3 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+    shield: '<path d="M12 3 5 6v5c0 4.6 3 8.4 7 10 4-1.6 7-5.4 7-10V6z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="m9 12 2 2 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+    cash: '<rect x="2.5" y="6" width="19" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 9.5v5M18 9.5v5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+    calc: '<rect x="5" y="3" width="14" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 7h8M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15v3M8 18h.01M12 18h.01" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+    store: '<path d="M4 9.5 5.5 4h13L20 9.5M4 9.5V20h16V9.5M4 9.5a2.7 2.7 0 0 0 5.3 0 2.7 2.7 0 0 0 5.4 0 2.7 2.7 0 0 0 5.3 0M10 20v-5h4v5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+    bolt: '<path d="M13 2 4 14h7l-1 8 9-12h-7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+    check: '<path d="m5 12.5 4.2 4.2L19 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>',
   }[name];
   return `<svg class="ic-${name} ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ui}</svg>`;
 };
@@ -65,7 +78,7 @@ const messengers = () => (cfg.phone ? `<div class="chips">${(cfg.messengers || [
 const payText = 'з ПДВ, без ПДВ або готівкою';
 
 // ---------------------------------------------------------------- head, header, footer, bar
-const FONTS = 'https://fonts.googleapis.com/css2?family=Geologica:wght@300..700&family=Martian+Mono:wght@300..500&display=swap';
+const FONTS = 'https://fonts.googleapis.com/css2?family=Manrope:wght@400..800&display=swap';
 const headHtml = ({ pre, path, title, description, ld, ogImage, robots, ogType }) => {
   const extra = [];
   if (domain) extra.push(`<link rel="canonical" href="${domain}/${path}">`, `<meta property="og:url" content="${domain}/${path}">`);
@@ -86,13 +99,13 @@ const headHtml = ({ pre, path, title, description, ld, ogImage, robots, ogType }
 <meta property="og:description" content="${esc(description)}">
 <meta property="og:image" content="${og}">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="theme-color" content="#0E0F11">
+<meta name="theme-color" content="#FFFFFF">
 <link rel="icon" href="${pre}favicon.svg" type="image/svg+xml">
 ${extra.join('\n')}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="${FONTS}">
-<link rel="stylesheet" href="${pre}assets/app.css">
+<link rel="stylesheet" href="${pre}assets/app.css?v=${CSS_V}">
 ${ld ? `<script type="application/ld+json">${JSON.stringify({ '@context': 'https://schema.org', ...ld })}</script>` : ''}
 ${analytics()}
 </head>`;
@@ -268,7 +281,7 @@ ${contact ? contactSection(pre, selected, path ? `${path}/` : '') : ''}
 </main>
 ${footerHtml(pre)}
 <script type="application/json" id="models-data">${JSON.stringify(byPower.map(p => ({ sku: p.sku, kw: p.kw, body: p.body, name: p.name, price: p.price, stockText: stockText(p), ats: p.ats, alt: p.alt, img2x: `${pre}assets/img/products/${p.image}-2x.webp`, url: `${pre}generatory/${p.slug}/` })))}</script>
-<script src="${pre}assets/app.js" defer></script>
+<script src="${pre}assets/app.js?v=${JS_V}" defer></script>
 </body>
 </html>
 `;
@@ -280,36 +293,35 @@ ${footerHtml(pre)}
 // ---------------------------------------------------------------- home page sections
 const hero = () => {
   const p200 = products.find(p => p.slug === 'edon-200-kvt-vidkryta-rama');
-  return `<section class="hero dark" aria-labelledby="hero-h">
-  <div class="wrap">
+  return `<section class="hero" aria-labelledby="hero-h">
+  <div class="wrap hero__grid">
     <div class="hero__text">
-      <p class="label">Дилер EDON · ${esc(cfg.city || 'Україна')} · доставка по всій Україні</p>
-      <h1 id="hero-h">Промислові дизельні генератори 30–200&nbsp;кВт</h1>
-      <p class="lead">Сім моделей EDON на складі. Безкоштовно довозимо до вашого об’єкта, запускаємо генератор і навчаємо персонал. Оплата ${payText}.</p>
+      <p class="pill">${icon('bolt')}${products.length} моделей EDON в наявності на складі</p>
+      <h1 id="hero-h">Дизельні генератори <span class="accent">30–200&nbsp;кВт</span> для бізнесу</h1>
+      <p class="lead">Привеземо безкоштовно в будь-яку область, запустимо на об’єкті й навчимо персонал. Працюємо з ПДВ, без ПДВ і за готівку.</p>
+      <p class="hero__price">від <b>${price(minPrice)}</b></p>
       <div class="btn-row">
-        <a class="btn btn--amber" href="#zamovlennia">Замовити генератор${icon('arrow')}</a>
-        ${cfg.phone ? `<a class="btn btn--ghost" href="${telHref}">${icon('phone')}${esc(phoneShown)}</a>` : `<a class="btn btn--ghost" href="#modeli">Обрати модель</a>`}
+        <a class="btn btn--amber btn--lg" href="#zamovlennia">Замовити генератор${icon('arrow')}</a>
+        ${cfg.phone ? `<a class="btn btn--line btn--lg" href="${telHref}">${icon('phone')}${esc(phoneShown)}</a>` : ''}
       </div>
-      ${cfg.phone ? `<div class="hero__msg"><p class="muted" style="font-size:15px">Або напишіть на цей номер, куди зручно:</p>${messengers()}</div>` : ''}
+      <ul class="checks"><li>${icon('check')}Доставка 0 ₴</li><li>${icon('check')}Запуск і навчання</li><li>${icon('check')}Гарантія 12 міс.</li></ul>
     </div>
-    <div class="stage" aria-hidden="false">
-      <p class="stage__num" aria-hidden="true">200<small>кВт</small></p>
-      <div class="stage__price"><span class="label">7 моделей на складі</span><b>від ${price(minPrice)}</b></div>
-      <div class="stage__floor"></div>
-      ${imgTag(p200, '', { cls: 'stage__img', lazy: false, priority: true, sizes: '(max-width: 1023px) 92vw, 720px' })}
-      <p class="callout" style="--x:31%;--y:39%"><i></i><span>6 циліндрів · рідинне охолодження</span></p>
-      <p class="callout callout--left" style="--x:86%;--y:60%;--l:32px"><i></i><span>Альтернатор 400/230 В</span></p>
-      <p class="callout" style="--x:18%;--y:89%"><i></i><span>Рама · 1650 кг</span></p>
+    <div class="hero__visual">
+      <div class="hero__blob" aria-hidden="true"></div>
+      ${imgTag(p200, '', { cls: 'hero__img', lazy: false, priority: true, sizes: '(max-width: 1023px) 92vw, 680px' })}
+      <span class="float float--1">${icon('check')}В наявності</span>
+      <span class="float float--2">${icon('truck')}Доставка 0 ₴</span>
+      <span class="float float--3"><small>EDON 200 кВт</small><b>${price(p200.price)}</b></span>
     </div>
   </div>
-  <dl class="facts">
-    <div class="wrap">
-      <div><dt>7</dt><dd>моделей EDON на складі, від 30 до 200 кВт</dd></div>
-      <div><dt>0&nbsp;₴</dt><dd>доставка до вашого об’єкта в будь-яку область</dd></div>
-      <div><dt>12&nbsp;міс.</dt><dd>гарантії; запуск і навчання персоналу на місці</dd></div>
-      <div><dt>3</dt><dd>способи оплати: з ПДВ, без ПДВ або готівкою</dd></div>
-    </div>
-  </dl>
+</section>
+<section class="trust" aria-label="Наші переваги">
+  <div class="wrap trust__grid">
+    <div>${icon('truck')}<p><b>Доставка 0 ₴</b><span>по всій Україні</span></p></div>
+    <div>${icon('power')}<p><b>Запуск на об’єкті</b><span>і навчання персоналу</span></p></div>
+    <div>${icon('shield')}<p><b>Гарантія 12 місяців</b><span>сервіс і запчастини</span></p></div>
+    <div>${icon('cash')}<p><b>З ПДВ, без ПДВ</b><span>або готівкою при запуску</span></p></div>
+  </div>
 </section>`;
 };
 
@@ -333,24 +345,40 @@ const modelPanel = p => `<article class="model" data-model-panel="${p.sku}" aria
       </div>
     </article>`;
 
-const modelsSection = () => {
-  const kws = [...new Set(byPower.map(p => p.kw))];
-  return `<section class="section" id="modeli" aria-labelledby="modeli-h">
-  <div class="wrap">
-    <div class="head head--row">
-      <div style="display:grid;gap:16px"><p class="label">Каталог · ${products.length} моделей на складі</p><h2 id="modeli-h">Оберіть потужність</h2></div>
-      <a class="link" href="#porivniannia">Порівняти всі моделі в таблиці</a>
-    </div>
-    <div class="switch" data-switch data-default="100">
-      <div class="power" role="group" aria-label="Потужність генератора">
-        ${kws.map(k => { const from = Math.min(...products.filter(p => p.kw === k).map(p => p.price)); return `<button type="button" data-kw="${k}" aria-pressed="${k === 100}"><b>${k}</b><span>кВт · від ${price(from)}</span></button>`; }).join('\n        ')}
+const productCard = p => `<article class="pcard">
+      <a class="pcard__pic" href="generatory/${p.slug}/" tabindex="-1" aria-hidden="true">${imgTag(p, '', { sizes: '(max-width: 640px) 92vw, 400px' })}<span class="badge">${icon('check')}${stockText(p)}</span>${p.ats ? '<span class="badge badge--dark">АВР у комплекті</span>' : ''}</a>
+      <div class="pcard__body">
+        <h3><a href="generatory/${p.slug}/">${esc(p.name)}</a></h3>
+        <ul class="tags"><li>${p.kva} кВА</li><li>${p.cylinders} циліндри</li><li>${p.weight} кг</li>${p.noise ? `<li>${p.noise}</li>` : ''}</ul>
+        <p class="pcard__price">${price(p.price)}</p>
+        <p class="pcard__note">з доставкою, запуском і гарантією</p>
+        <div class="pcard__btns"><a class="btn btn--amber" href="#zamovlennia" data-order="${p.sku}">Купити</a><a class="btn btn--line" href="generatory/${p.slug}/">Детальніше</a></div>
       </div>
-      <div class="body-toggle" role="group" aria-label="Виконання"><button type="button" data-body="open" aria-pressed="true">Відкрита рама</button><button type="button" data-body="canopy" aria-pressed="false">У кожусі</button></div>
+    </article>`;
+const modelsSection = () => `<section class="section soft" id="modeli" aria-labelledby="modeli-h">
+  <div class="wrap">
+    <div class="head head--row"><div><p class="label">Каталог</p><h2 id="modeli-h">Генератори в наявності</h2></div><a class="link" href="#porivniannia">Порівняти всі в таблиці</a></div>
+    <div class="catalog">
+    ${byPower.map(productCard).join('\n    ')}
+      <aside class="pcard pcard--help"><div>${icon('calc')}<h3>Не знаєте, яку потужність обрати?</h3><p>Порахуємо безкоштовно за переліком вашого обладнання з урахуванням пускових струмів.</p></div><div class="btn-row"><a class="btn btn--amber" href="#pidbir">Калькулятор</a>${cfg.phone ? `<a class="btn btn--ghost" href="${telHref}">${icon('phone')}Подзвонити</a>` : ''}</div></aside>
     </div>
-    ${byPower.map(modelPanel).join('\n    ')}
   </div>
 </section>`;
-};
+
+const WHY = [
+  ['truck', 'Безкоштовна доставка', 'Привеземо вантажним авто до вашого об’єкта в будь-яку область України.'],
+  ['power', 'Запуск фахівцем', 'Перевіримо майданчик, вихлоп і підключення, запустимо генератор під навантаженням.'],
+  ['users', 'Навчання персоналу', 'Покажемо запуск, зупинку, обкатку й щомісячну перевірку станції.'],
+  ['shield', 'Гарантія 12 місяців', 'Гарантійний ремонт, сервіс і запчастини беремо на себе.'],
+  ['cash', 'Зручна оплата', 'З ПДВ, без ПДВ або готівкою фахівцю під час запуску.'],
+  ['store', 'Магазин у Тернополі', `${cfg.street ? esc(cfg.street) + '. ' : ''}Можна приїхати, подивитися й порадитися.`],
+];
+const whySection = () => `<section class="section" id="chomu-my" aria-labelledby="why-h">
+  <div class="wrap">
+    <div class="head"><p class="label">Чому ми</p><h2 id="why-h">Не просто продаємо — запускаємо під ключ</h2></div>
+    <div class="why">${WHY.map(([ic, t, d]) => `<div class="why__item"><span class="why__ic">${icon(ic)}</span><h3>${t}</h3><p>${d}</p></div>`).join('')}</div>
+  </div>
+</section>`;
 
 const PRESETS = [['Магазин, кафе', 25], ['СТО', 35], ['Ферма', 45], ['Цех на 5–8 верстатів', 60], ['Виробництво', 110], ['Готель, ТЦ', 140], ['Холодильний склад', 180]];
 const calcSection = () => `<section class="section dark" id="pidbir" aria-labelledby="pidbir-h">
@@ -405,25 +433,25 @@ const atsSection = () => `<section class="section dark-2" id="avr" aria-labelled
     </div>
     <figure class="schema" role="img" aria-label="Схема: мережа 400 вольт і генератор EDON підключені до АВР; коли напруги в мережі немає, АВР живить ваш об’єкт від генератора">
       <svg viewBox="0 0 640 330" aria-hidden="true">
-        <defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="#FFB01F"/></marker></defs>
+        <defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="#FF8A1F"/></marker></defs>
         <path d="M190 72 H245 V150 H280" fill="none" stroke="rgba(255,255,255,.22)" stroke-width="2" stroke-dasharray="4 6"/>
         <path d="M230 98 l14 14 M244 98 l-14 14" stroke="#FF7A6E" stroke-width="2.4" stroke-linecap="round"/>
-        <path class="flow" d="M190 258 H245 V180 H276" fill="none" stroke="#FFB01F" stroke-width="2.4" marker-end="url(#ah)"/>
-        <path class="flow" d="M392 165 H466" fill="none" stroke="#FFB01F" stroke-width="2.4" marker-end="url(#ah)"/>
-        <rect x="16" y="40" width="174" height="64" rx="10" fill="#202328" stroke="rgba(255,255,255,.18)"/>
+        <path class="flow" d="M190 258 H245 V180 H276" fill="none" stroke="#FF8A1F" stroke-width="2.4" marker-end="url(#ah)"/>
+        <path class="flow" d="M392 165 H466" fill="none" stroke="#FF8A1F" stroke-width="2.4" marker-end="url(#ah)"/>
+        <rect x="16" y="40" width="174" height="64" rx="10" fill="#0B1F3A" stroke="rgba(255,255,255,.18)"/>
         <text x="34" y="68" fill="#F2F1EE" font-size="15">Мережа 400 В</text><text x="34" y="90" fill="#FF9C93" font-size="12">напруги немає</text>
-        <rect x="16" y="226" width="174" height="64" rx="10" fill="#202328" stroke="#FFB01F"/>
-        <text x="34" y="254" fill="#F2F1EE" font-size="15">Генератор EDON</text><text x="34" y="276" fill="#FFB01F" font-size="12">запущено</text>
-        <rect x="280" y="131" width="112" height="68" rx="10" fill="#FFB01F"/>
-        <text x="336" y="171" fill="#121315" font-size="18" text-anchor="middle" font-weight="500">АВР</text>
-        <rect x="468" y="131" width="156" height="68" rx="10" fill="#202328" stroke="rgba(255,255,255,.18)"/>
+        <rect x="16" y="226" width="174" height="64" rx="10" fill="#0B1F3A" stroke="#FF8A1F"/>
+        <text x="34" y="254" fill="#F2F1EE" font-size="15">Генератор EDON</text><text x="34" y="276" fill="#FF8A1F" font-size="12">запущено</text>
+        <rect x="280" y="131" width="112" height="68" rx="10" fill="#FF8A1F"/>
+        <text x="336" y="171" fill="#160A00" font-size="18" text-anchor="middle" font-weight="500">АВР</text>
+        <rect x="468" y="131" width="156" height="68" rx="10" fill="#0B1F3A" stroke="rgba(255,255,255,.18)"/>
         <text x="486" y="161" fill="#F2F1EE" font-size="15">Ваш об’єкт</text><text x="486" y="183" fill="#B9BCC1" font-size="12">світло є</text>
       </svg>
     </figure>
   </div>
 </section>`;
 
-const paySection = () => `<section class="section paper-2" id="oplata" aria-labelledby="oplata-h">
+const paySection = () => `<section class="section soft" id="oplata" aria-labelledby="oplata-h">
   <div class="wrap">
     <div class="head"><p class="label">Оплата</p><h2 id="oplata-h">Платіть так, як зручно вашій бухгалтерії</h2><p class="lead">Працюємо з ПДВ, без ПДВ і за готівку. Спосіб оплати обираєте ви, суму в рахунку менеджер підтверджує до оплати.</p></div>
     <div class="cards cards--3">
@@ -456,7 +484,7 @@ const FAQ = [
   ['Яка гарантія?', 'Дванадцять місяців на кожен генератор. Гарантійний ремонт, сервіс і запчастини беремо на себе.'],
   ['Як із вами зв’язатися?', cfg.phone ? `Дзвоніть на ${phoneShown} або пишіть на цей самий номер у Viber, Telegram, WhatsApp чи SMS.${cfg.email ? ` Пошта: ${cfg.email}.` : ''}` : 'Залиште заявку у формі нижче.'],
 ];
-const faqSection = () => `<section class="section paper-2" id="pytannia" aria-labelledby="faq-h">
+const faqSection = () => `<section class="section soft" id="pytannia" aria-labelledby="faq-h">
   <div class="wrap">
     <div class="head"><p class="label">Питання</p><h2 id="faq-h">Що питають перед покупкою</h2></div>
     <div class="faq">${FAQ.map(([q, a]) => `<div><h3>${esc(q)}</h3><p>${esc(a)}</p></div>`).join('')}</div>
@@ -469,7 +497,7 @@ writePage({
   path: '', onIndex: true,
   title: `${cfg.name}: дизельні генератори EDON 30–200 кВт з доставкою по Україні`,
   description: `Сім моделей промислових генераторів EDON на складі, від ${plain(price(minPrice))}. Безкоштовна доставка, запуск на об’єкті й навчання. Оплата з ПДВ, без ПДВ або готівкою.`,
-  main: [hero(), modelsSection(), calcSection(), processSection(), atsSection(), paySection(), compareSection(), faqSection()].join('\n'),
+  main: [hero(), modelsSection(), whySection(), calcSection(), processSection(), paySection(), atsSection(), compareSection(), faqSection()].join('\n'),
   ld: { '@graph': [storeLd(), { '@type': 'WebSite', name: cfg.name, inLanguage: 'uk', ...(domain ? { url: `${domain}/` } : {}) }, { '@type': 'ItemList', name: 'Дизельні генератори EDON на складі', itemListElement: byPower.map((p, i) => ({ '@type': 'ListItem', position: i + 1, item: productLd(p) })) }, faqLd] },
 });
 
