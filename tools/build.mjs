@@ -35,10 +35,11 @@ const IMG_SIZE = {
   'edon-100-kvt-u-kozhusi': [500, 264], 'edon-150-kvt-vidkryta-rama': [488, 309], 'edon-200-kvt-vidkryta-rama': [493, 267],
   'edon-gj-30gf-30-kvt': [537, 413],
 };
-const imgTag = (p, pre, { cls = '', lazy = true, sizes = '(max-width: 1023px) 92vw, 640px', priority = false } = {}) => {
+const vtName = p => `gen-${p.sku.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+const imgTag = (p, pre, { cls = '', lazy = true, sizes = '(max-width: 1023px) 92vw, 640px', priority = false, vt = false } = {}) => {
   const [w, h] = IMG_SIZE[p.image] || [500, 300];
   const base = `${pre}assets/img/products/${p.image}`;
-  return `<img${cls ? ` class="${cls}"` : ''} src="${base}-2x.webp" srcset="${base}-240.webp 240w, ${base}.webp ${w}w, ${base}-2x.webp ${w * 2}w" sizes="${sizes}" width="${w}" height="${h}" alt="${esc(p.alt)}"${lazy ? ' loading="lazy"' : ''}${priority ? ' fetchpriority="high"' : ''} decoding="async">`;
+  return `<img${cls ? ` class="${cls}"` : ''} src="${base}-2x.webp" srcset="${base}-240.webp 240w, ${base}.webp ${w}w, ${base}-2x.webp ${w * 2}w" sizes="${sizes}" width="${w}" height="${h}" alt="${esc(p.alt)}"${lazy ? ' loading="lazy"' : ''}${priority ? ' fetchpriority="high"' : ''} decoding="async"${vt ? ` style="view-transition-name:${vtName(p)}"` : ''}>`;
 };
 const bodyName = p => (p.body === 'canopy' ? 'шумозахисний кожух' : 'відкрита рама');
 const stockText = p => (p.stock === 'in_stock' ? 'На складі' : 'Під замовлення');
@@ -54,7 +55,7 @@ const icon = (name, cls = '') => {
     sms: '<path d="M4 5h16v11H9l-5 4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 10.5h.01M12 10.5h.01M16 10.5h.01" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>',
     mail: '<rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m4 7 8 6 8-6" fill="none" stroke="currentColor" stroke-width="1.8"/>',
     arrow: '<path d="M5 12h13M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
-    menu: '<path d="M4 7h16M4 17h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
+    menu: '<path class="l1" d="M4 8h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path class="l2" d="M4 16h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
     pin: '<path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="9.5" r="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/>',
     truck: '<path d="M2 6h11v10H2zM13 9h4l4 4v3h-8z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="6" cy="17.5" r="1.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="17" cy="17.5" r="1.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
     power: '<path d="M12 3v8M7 6.3a7 7 0 1 0 10 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
@@ -101,6 +102,7 @@ const headHtml = ({ pre, path, title, description, ld, ogImage, robots, ogType }
 <meta name="twitter:card" content="summary_large_image">
 <meta name="theme-color" content="#FFFFFF">
 <link rel="icon" href="${pre}favicon.svg" type="image/svg+xml">
+<script>document.documentElement.classList.add('js')</script>
 ${extra.join('\n')}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -127,9 +129,11 @@ const headerHtml = (pre, onIndex) => {
   </div>
 </header>
 <div class="menu" id="menu">
-  ${NAV.map(([id, t]) => `<a href="${a(id)}">${t}</a>`).join('\n  ')}
-  <div class="btn-row">${cfg.phone ? `<a class="btn btn--amber" href="${telHref}">${icon('phone')}${esc(phoneShown)}</a>` : ''}</div>
-  ${messengers()}
+  <div class="menu__inner">
+  ${NAV.map(([id, t], i) => `<a href="${a(id)}" style="--i:${i}">${t}</a>`).join('\n  ')}
+  <div class="btn-row" style="--i:${NAV.length}">${cfg.phone ? `<a class="btn btn--amber" href="${telHref}">${icon('phone')}${esc(phoneShown)}</a>` : ''}</div>
+  <div style="--i:${NAV.length + 1}">${messengers()}</div>
+  </div>
 </div>`;
 };
 
@@ -207,7 +211,7 @@ const contactSection = (pre, selected = '', pagePath = '') => `<section class="s
         ${cfg.city ? `<li>Магазин: ${esc([cfg.street, cfg.city].filter(Boolean).join(', '))} · <a class="link" href="https://www.google.com/maps/search/?api=1&amp;query=${encodeURIComponent([cfg.street, cfg.city].join(' '))}" target="_blank" rel="noopener">Як дістатися</a></li>` : ''}
       </ul>
     </div>
-    <div class="form-card">
+    <div class="form-card"${cfg.hours ? ` data-hours="${esc(cfg.hours)}"` : ''}>
       <p class="label" style="margin-bottom:20px">Заявка на генератор</p>
       ${orderForm(selected, pagePath).replaceAll('{{pre}}', pre)}
     </div>
@@ -345,8 +349,8 @@ const modelPanel = p => `<article class="model" data-model-panel="${p.sku}" aria
       </div>
     </article>`;
 
-const productCard = p => `<article class="pcard">
-      <a class="pcard__pic" href="generatory/${p.slug}/" tabindex="-1" aria-hidden="true">${imgTag(p, '', { sizes: '(max-width: 640px) 92vw, 400px' })}<span class="badge">${icon('check')}${stockText(p)}</span>${p.ats ? '<span class="badge badge--dark">АВР у комплекті</span>' : ''}</a>
+const productCard = p => `<article class="pcard" data-sku="${p.sku}" data-kw="${p.kw}" data-price="${p.price}" data-body="${p.body}" data-ats="${p.ats ? 1 : 0}">
+      <a class="pcard__pic" href="generatory/${p.slug}/" tabindex="-1" aria-hidden="true">${imgTag(p, '', { sizes: '(max-width: 640px) 92vw, 400px', vt: true })}<span class="badge">${icon('check')}${stockText(p)}</span>${p.ats ? '<span class="badge badge--dark">АВР у комплекті</span>' : ''}</a>
       <div class="pcard__body">
         <h3><a href="generatory/${p.slug}/">${esc(p.name)}</a></h3>
         <ul class="tags"><li>${p.kva} кВА</li><li>${p.cylinders} циліндри</li><li>${p.weight} кг</li>${p.noise ? `<li>${p.noise}</li>` : ''}</ul>
@@ -358,6 +362,16 @@ const productCard = p => `<article class="pcard">
 const modelsSection = () => `<section class="section soft" id="modeli" aria-labelledby="modeli-h">
   <div class="wrap">
     <div class="head head--row"><div><p class="label">Каталог</p><h2 id="modeli-h">Генератори в наявності</h2></div><a class="link" href="#porivniannia">Порівняти всі в таблиці</a></div>
+    <div class="filters" data-filters>
+      <div class="seg" role="group" aria-label="Виконання генератора">
+        <button type="button" data-filter="all" aria-pressed="true">Усі <span>${products.length}</span></button>
+        <button type="button" data-filter="open" aria-pressed="false">Відкрита рама <span>${products.filter(p => p.body === 'open').length}</span></button>
+        <button type="button" data-filter="canopy" aria-pressed="false">У кожусі <span>${products.filter(p => p.body === 'canopy').length}</span></button>
+        <button type="button" data-filter="ats" aria-pressed="false">З АВР <span>${products.filter(p => p.ats).length}</span></button>
+      </div>
+      <label class="sort"><span>Сортувати</span><select data-sort><option value="kw">за потужністю</option><option value="price-asc">спочатку дешевші</option><option value="price-desc">спочатку дорожчі</option></select></label>
+      <p class="sr-only" role="status" data-filter-status></p>
+    </div>
     <div class="catalog">
     ${byPower.map(productCard).join('\n    ')}
       <aside class="pcard pcard--help"><div>${icon('calc')}<h3>Не знаєте, яку потужність обрати?</h3><p>Порахуємо безкоштовно за переліком вашого обладнання з урахуванням пускових струмів.</p></div><div class="btn-row"><a class="btn btn--amber" href="#pidbir">Калькулятор</a>${cfg.phone ? `<a class="btn btn--ghost" href="${telHref}">${icon('phone')}Подзвонити</a>` : ''}</div></aside>
@@ -518,7 +532,7 @@ for (const p of byPower) {
   <div class="wrap">
     ${crumbs('{{pre}}', [['{{pre}}#modeli', 'Генератори'], [null, p.name]])}
     <div class="pp__grid">
-      <div class="model__pic" style="min-height:460px"><span class="model__kw" aria-hidden="true">${p.kw}</span><span class="model__tag dot-ok">${stockText(p)}</span>${imgTag(p, '{{pre}}', { lazy: false, priority: true })}</div>
+      <div class="model__pic" style="min-height:460px"><span class="model__kw" aria-hidden="true">${p.kw}</span><span class="model__tag dot-ok">${stockText(p)}</span>${imgTag(p, '{{pre}}', { lazy: false, priority: true, vt: true })}</div>
       <div class="model__info pp__buy">
         <div style="display:grid;gap:10px"><p class="label">EDON · ${esc(bodyName(p))} · ${esc(p.sku)}</p><h1 id="pp-h">${esc(p.fullName)}</h1></div>
         <p class="price">${price(p.price)}</p>

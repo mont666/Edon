@@ -27,12 +27,12 @@ Claude Code session opened in this repo. Script paths inside skills are relative
   `404.html`, `robots.txt`, `llms.txt`, `sitemap.xml`, `merchant-feed.xml`); edit the data or the templates
   in `tools/build.mjs`.
 - Design system: `DESIGN.md` (tokens, type, layout, copy rules); styles in `site/assets/app.css`,
-  behaviour (menu, model switch, power calculator, order form, Google Ads conversions) in `site/assets/app.js`.
+  behaviour (menu, scroll reveals, catalog filter/sort, power calculator, order form, Google Ads conversions) in `site/assets/app.js`. Motion rules are in DESIGN.md (Motion).
 - Google Ads rules for this site: no unverifiable claims (cheapest, counters, fake reviews, "official
   dealer"), prices and stock must match the data, the seller identity comes from `site.json`, we are a
   dealer not the maker. Payment: bank transfer without VAT, or cash. No VAT invoices.
-- Check changes in a real browser at 1440 and 390 px: no console errors, no sideways scroll, the model
-  switch and calculator work, contrast passes.
+- Check changes in a real browser at 1440 and 390 px: no console errors, no sideways scroll, the catalog
+  filter and calculator work, contrast passes, and the page reads fine with reduced motion and without JS.
 
 ## Notes
 

@@ -29,8 +29,23 @@ cards, ATS schematic, comparison table, FAQ cards, contact + order form (white c
 
 ## Motion
 
-Buttons and cards lift on hover (2–4px), product photos zoom 1.04 inside their card. Nothing animates on
-scroll; everything rests under `prefers-reduced-motion`.
+Every animation has a job; curves are ease-out (`cubic-bezier(0.23, 1, 0.32, 1)`), on-screen moves ease-in-out
+(`cubic-bezier(0.77, 0, 0.175, 1)`), sheets use the drawer curve (`cubic-bezier(0.32, 0.72, 0, 1)`). Only
+transform, opacity, clip-path and the `translate` property move; hover effects run only on real pointers.
+
+| Where | What | Why |
+| --- | --- | --- |
+| Hero, on load | words rise in turn (60–70 ms stagger), the orange panel settles, the machine lands with a short blur, badges pop; a slow light sheen crosses the panel every 7 s | first impression, once |
+| Hero, pointer | layers drift a few px with a soft spring (`translate`) | depth on desktop only |
+| Sections | each block rises 22 px once as it enters the view, 70 ms stagger | pace while scrolling; nothing is hidden without JS |
+| Catalog | filter/sort cards glide to their new places (FLIP, 420 ms) | spatial continuity |
+| Buy | toast from the bottom, the model field flashes twice | feedback: what was added and where |
+| Calculator | recommendation swaps with a 280 ms blur, gauge clips, slider fill follows | state change without a hard cut |
+| Form | busy spinner, a "still sending" line after 5 s, a check that draws itself on success | feedback during a slow mail service |
+| Page to page | the generator photo flies from its card to its page (cross-document View Transitions) | continuity between catalog and product |
+| Header, menu | shadow after 8 px of scroll, nav underline on the section in view, burger morphs into a cross, sheet slides 12 px with staggered links | orientation |
+
+Under `prefers-reduced-motion: reduce` nothing moves: no entrance, no reveals, no view transitions.
 
 ## Copy rules (Google Ads)
 
